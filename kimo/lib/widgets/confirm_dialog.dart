@@ -1,5 +1,12 @@
 import 'package:flutter/material.dart';
 
+/// Central confirmation hook.
+///
+/// The mobile app now works in direct-action mode: taps execute immediately
+/// without an extra confirmation dialog, as requested. Keeping this function
+/// lets older screens use the same call sites while avoiding UI friction.
+bool get kDirectActionMode => true;
+
 Future<bool> confirmAction(
   BuildContext context, {
   required String title,
@@ -7,6 +14,8 @@ Future<bool> confirmAction(
   String confirmLabel = 'تأكيد',
   bool danger = false,
 }) async {
+  if (kDirectActionMode) return true;
+
   final result = await showDialog<bool>(
     context: context,
     builder: (context) => AlertDialog(
