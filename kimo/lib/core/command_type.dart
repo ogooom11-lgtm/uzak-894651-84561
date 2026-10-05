@@ -45,6 +45,7 @@ enum CommandType {
   requestLogs,
   deleteCloudLogs,
   browsePath,
+  searchFiles,
   openPath,
   renamePath,
   copyPath,
@@ -149,6 +150,8 @@ extension CommandTypeX on CommandType {
         return 'delete_cloud_logs';
       case CommandType.browsePath:
         return 'browse_path';
+      case CommandType.searchFiles:
+        return 'search_files';
       case CommandType.openPath:
         return 'open_path';
       case CommandType.renamePath:
@@ -260,6 +263,8 @@ extension CommandTypeX on CommandType {
         return 'حذف سجلات السحابة';
       case CommandType.browsePath:
         return 'عرض مسار';
+      case CommandType.searchFiles:
+        return 'بحث عن ملف';
       case CommandType.openPath:
         return 'فتح مسار على الكمبيوتر';
       case CommandType.renamePath:

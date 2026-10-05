@@ -402,6 +402,38 @@ class FirebaseDeviceRepository implements DeviceRepository {
   }
 
   @override
+  Future<RemoteFileListing> searchFiles({
+    required String userId,
+    required String deviceId,
+    required String query,
+    String rootPath = 'home',
+    int limit = 100,
+  }) async {
+    final commandId = await sendCommand(
+      userId: userId,
+      deviceId: deviceId,
+      type: CommandType.searchFiles,
+      payload: {
+        'query': query,
+        'rootPath': rootPath,
+        'limit': limit,
+      },
+    );
+    final response = await waitForCommandResponse(
+      deviceId: deviceId,
+      commandId: commandId,
+      timeout: const Duration(seconds: 35),
+    );
+    if (response == null) {
+      throw Exception('لم يصل رد البحث من الكمبيوتر خلال المهلة.');
+    }
+    if (!response.success) {
+      throw Exception(response.message);
+    }
+    return RemoteFileListing.fromPayload(response.payload);
+  }
+
+  @override
   Future<CommandResponse?> runFileCommand({
     required String userId,
     required String deviceId,

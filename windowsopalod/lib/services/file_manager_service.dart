@@ -65,6 +65,90 @@ class FileManagerService {
     };
   }
 
+  Future<Map<String, dynamic>> searchFiles({
+    required String query,
+    String rootPath = 'home',
+    int limit = 100,
+  }) async {
+    final trimmed = query.trim().toLowerCase();
+    if (trimmed.length < 2) {
+      throw StateError('اكتب حرفين على الأقل للبحث.');
+    }
+
+    final maxResults = limit.clamp(1, 300).toInt();
+    final deadline = DateTime.now().add(const Duration(seconds: 22));
+    final roots = await _searchRoots(rootPath);
+    final queue = roots.map((path) => Directory(path)).toList();
+    final results = <Map<String, dynamic>>[];
+    final visited = <String>{};
+    var scannedDirectories = 0;
+    var truncated = false;
+
+    while (queue.isNotEmpty && results.length < maxResults) {
+      if (DateTime.now().isAfter(deadline) || scannedDirectories >= 1800) {
+        truncated = true;
+        break;
+      }
+
+      final dir = queue.removeAt(0);
+      final normalizedDir = dir.path.toLowerCase();
+      if (!visited.add(normalizedDir)) continue;
+      scannedDirectories++;
+
+      Stream<FileSystemEntity> stream;
+      try {
+        stream = dir.list(followLinks: false);
+      } catch (_) {
+        continue;
+      }
+
+      try {
+        await for (final entity in stream) {
+          if (DateTime.now().isAfter(deadline) || results.length >= maxResults) {
+            truncated = true;
+            break;
+          }
+
+          final name = _paths.basename(entity.path);
+          if (_shouldSkipSearchPath(entity.path)) continue;
+
+          if (name.toLowerCase().contains(trimmed)) {
+            try {
+              results.add(await _entityToMap(entity));
+            } catch (_) {}
+          }
+
+          if (entity is Directory) {
+            queue.add(entity);
+          }
+        }
+      } catch (_) {
+        // بعض المسارات ممنوعة أو بطيئة؛ نتجاوزها ونكمل البحث.
+      }
+    }
+
+    results.sort((a, b) {
+      final aDir = a['type'] == 'directory';
+      final bDir = b['type'] == 'directory';
+      if (aDir != bDir) return aDir ? -1 : 1;
+      return a['name']
+          .toString()
+          .toLowerCase()
+          .compareTo(b['name'].toString().toLowerCase());
+    });
+
+    return {
+      'path': 'search:$query',
+      'parentPath': rootPath,
+      'items': results,
+      'truncated': truncated || queue.isNotEmpty,
+      'limit': maxResults,
+      'query': query,
+      'rootPath': rootPath,
+      'scannedDirectories': scannedDirectories,
+    };
+  }
+
   Future<Map<String, dynamic>> openPath(String path) async {
     final resolved = _resolveSpecialPath(path);
     final result = await SafeProcessRunner.run(
@@ -322,6 +406,40 @@ $drives | ConvertTo-Json -Compress -Depth 3
     } else {
       throw StateError('المسار غير موجود: $source');
     }
+  }
+
+  Future<List<String>> _searchRoots(String rootPath) async {
+    final text = rootPath.trim().toLowerCase();
+    final userProfile =
+        Platform.environment['USERPROFILE'] ?? Directory.current.path;
+    if (text.isEmpty || text == 'home') {
+      return [
+        '$userProfile\\Desktop',
+        '$userProfile\\Documents',
+        '$userProfile\\Downloads',
+        '$userProfile\\Pictures',
+      ].where((path) => Directory(path).existsSync()).toList();
+    }
+    if (text == 'roots') {
+      final roots = await _listRoots();
+      return roots
+          .map((root) => root['path']?.toString() ?? '')
+          .where((path) => path.isNotEmpty && Directory(path).existsSync())
+          .toList();
+    }
+    final resolved = _resolveSpecialPath(rootPath);
+    if (resolved == 'roots') return _searchRoots('roots');
+    return Directory(resolved).existsSync() ? [resolved] : <String>[];
+  }
+
+  bool _shouldSkipSearchPath(String path) {
+    final lower = path.toLowerCase();
+    return lower.contains(r'$recycle.bin') ||
+        lower.contains(r'system volume information') ||
+        lower.contains(r'\windows\winsxs\') ||
+        lower.contains(r'\appdata\local\packages\') ||
+        lower.contains(r'\node_modules\') ||
+        lower.contains(r'\.git\');
   }
 
   String _resolveSpecialPath(String value) {

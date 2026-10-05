@@ -442,6 +442,57 @@ class MockDeviceRepository implements DeviceRepository {
   }
 
   @override
+  Future<RemoteFileListing> searchFiles({
+    required String userId,
+    required String deviceId,
+    required String query,
+    String rootPath = 'home',
+    int limit = 100,
+  }) async {
+    await sendCommand(
+      userId: userId,
+      deviceId: deviceId,
+      type: CommandType.searchFiles,
+      payload: {'query': query, 'rootPath': rootPath, 'limit': limit},
+    );
+    final now = DateTime.now();
+    final files = [
+      RemoteFileItem(
+        name: 'report.pdf',
+        path: r'C:\Users\Ahmad\Desktop\report.pdf',
+        type: 'file',
+        extension: 'pdf',
+        size: 240000,
+        modifiedAt: now,
+      ),
+      RemoteFileItem(
+        name: 'setup.exe',
+        path: r'C:\Users\Ahmad\Downloads\setup.exe',
+        type: 'file',
+        extension: 'exe',
+        size: 5400000,
+        modifiedAt: now,
+      ),
+      RemoteFileItem(
+        name: 'Projects',
+        path: r'C:\Users\Ahmad\Documents\Projects',
+        type: 'directory',
+        modifiedAt: now,
+        iconKey: 'folder',
+      ),
+    ];
+    final lower = query.toLowerCase();
+    return RemoteFileListing(
+      path: 'search:$query',
+      parentPath: rootPath,
+      items: files
+          .where((item) => item.name.toLowerCase().contains(lower))
+          .take(limit)
+          .toList(),
+    );
+  }
+
+  @override
   Future<CommandResponse?> runFileCommand({
     required String userId,
     required String deviceId,

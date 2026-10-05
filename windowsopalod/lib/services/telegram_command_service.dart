@@ -333,6 +333,14 @@ class TelegramCommandService {
       final path = normalized.substring('browse '.length).trim();
       return _ParsedTelegramCommand('browse_path', {'path': path});
     }
+    if (lower.startsWith('search ')) {
+      final query = normalized.substring('search '.length).trim();
+      return _ParsedTelegramCommand('search_files', {'query': query, 'rootPath': 'home'});
+    }
+    if (lower.startsWith('بحث ')) {
+      final query = normalized.substring('بحث '.length).trim();
+      return _ParsedTelegramCommand('search_files', {'query': query, 'rootPath': 'home'});
+    }
     if (lower.startsWith('open ')) {
       final path = normalized.substring('open '.length).trim();
       return _ParsedTelegramCommand('open_path', {'path': path});
@@ -391,7 +399,7 @@ class TelegramCommandService {
 
   String _briefPayload(String type, Map<String, dynamic> payload) {
     if (payload.isEmpty) return '';
-    if (type == 'browse_path') {
+    if (type == 'browse_path' || type == 'search_files') {
       final items = (payload['items'] as List?) ?? const [];
       final lines = items.take(20).map((item) {
         if (item is! Map) return item.toString();
@@ -438,7 +446,7 @@ class TelegramCommandService {
         'message مرحبا من الهاتف\n'
         'close chrome.exe, block app chrome, allow app chrome\n'
         'block site youtube.com, allow site youtube.com\n'
-        'browse roots, browse C:\\\\, open C:\\\\path\n'
+        'browse roots, search report, open C:\\\\path\n'
         'qr, permissions, stop commands';
   }
 
@@ -458,7 +466,7 @@ class TelegramCommandService {
         [button('qr'), button('permissions'), button('help')],
         [button('close chrome.exe'), button('message مرحبا من الهاتف')],
         [button('block site youtube.com'), button('allow site youtube.com')],
-        [button('browse roots'), button(r'browse C:\Users')],
+        [button('browse roots'), button('search report'), button(r'browse C:\Users')],
         [button('stop commands')],
       ],
       'resize_keyboard': true,

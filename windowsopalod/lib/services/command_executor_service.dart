@@ -686,6 +686,26 @@ class CommandExecutorService {
                 {'path': responsePayload['path']});
             break;
 
+          case 'search_files':
+            final query = (command.payload['query'] ?? '').toString();
+            responsePayload = await fileManager.searchFiles(
+              query: query,
+              rootPath: (command.payload['rootPath'] ?? 'home').toString(),
+              limit: _parseInt(command.payload['limit']) ?? 100,
+            );
+            final resultCount = responsePayload['items'] is List
+                ? (responsePayload['items'] as List).length
+                : 0;
+            success = true;
+            message = 'تم البحث وإرسال $resultCount نتيجة';
+            await store.appendLog('file_search', 'تم البحث عن ملفات من الهاتف', {
+              'query': query,
+              'rootPath': responsePayload['rootPath'],
+              'count': resultCount,
+              'truncated': responsePayload['truncated'] == true,
+            });
+            break;
+
           case 'open_path':
             final path = (command.payload['path'] ?? '').toString();
             if (path.isEmpty) throw StateError('path مطلوب');
@@ -1063,6 +1083,18 @@ class CommandExecutorService {
             message = 'تم قراءة المسار. عدد العناصر: $items';
             break;
 
+          case 'search_files':
+            final query = (command.payload['query'] ?? '').toString();
+            responsePayload = await fileManager.searchFiles(
+              query: query,
+              rootPath: (command.payload['rootPath'] ?? 'home').toString(),
+              limit: _parseInt(command.payload['limit']) ?? 80,
+            );
+            success = true;
+            final items = (responsePayload['items'] as List?)?.length ?? 0;
+            message = 'تم البحث. عدد النتائج: $items';
+            break;
+
           case 'open_path':
             final path = (command.payload['path'] ?? '').toString();
             if (path.isEmpty) throw StateError('path مطلوب');
@@ -1259,6 +1291,7 @@ class CommandExecutorService {
       case 'show_message':
         return 'connection';
       case 'browse_path':
+      case 'search_files':
       case 'open_path':
       case 'rename_path':
       case 'copy_path':

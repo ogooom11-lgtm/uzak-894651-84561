@@ -24,14 +24,23 @@ class FileManagerScreen extends StatefulWidget {
 }
 
 class _FileManagerScreenState extends State<FileManagerScreen> {
+  final TextEditingController _searchController = TextEditingController();
   RemoteFileListing? _listing;
   bool _loading = false;
+  bool _searching = false;
   String? _error;
+  String _searchRoot = 'home';
 
   @override
   void initState() {
     super.initState();
     _load('roots');
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   Future<void> _load(String path) async {
@@ -52,6 +61,42 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
       setState(() => _error = e.toString());
     } finally {
       if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _searchFiles() async {
+    final query = _searchController.text.trim();
+    if (query.length < 2) {
+      showAppSnack(context, 'اكتب حرفين على الأقل للبحث.', error: true);
+      return;
+    }
+
+    setState(() {
+      _searching = true;
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final listing = await context.read<DeviceRepository>().searchFiles(
+            userId: widget.userId,
+            deviceId: widget.device.id,
+            query: query,
+            rootPath: _searchRoot,
+            limit: 120,
+          );
+      if (!mounted) return;
+      setState(() => _listing = listing);
+      showAppSnack(context, 'تم العثور على ${listing.items.length} نتيجة.');
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _error = e.toString());
+    } finally {
+      if (mounted) {
+        setState(() {
+          _searching = false;
+          _loading = false;
+        });
+      }
     }
   }
 
@@ -283,14 +328,27 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
         actions: [
           IconButton(
             tooltip: 'تحديث',
-            onPressed:
-                listing == null || _loading ? null : () => _load(listing.path),
+            onPressed: listing == null || _loading
+                ? null
+                : () => listing.path.startsWith('search:')
+                    ? _searchFiles()
+                    : _load(listing.path),
             icon: const Icon(Icons.refresh),
           ),
         ],
       ),
       body: Column(
         children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+            child: _SearchFilesCard(
+              controller: _searchController,
+              rootPath: _searchRoot,
+              searching: _searching,
+              onRootChanged: (value) => setState(() => _searchRoot = value),
+              onSearch: _searchFiles,
+            ),
+          ),
           _PathHeader(
             path: listing?.path ?? 'roots',
             parentPath: listing?.parentPath,
@@ -539,6 +597,95 @@ class _DestinationPickerSheetState extends State<_DestinationPickerSheet> {
                   label: const Text('اختيار هذا المجلد'),
                 ),
               ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SearchFilesCard extends StatelessWidget {
+  const _SearchFilesCard({
+    required this.controller,
+    required this.rootPath,
+    required this.searching,
+    required this.onRootChanged,
+    required this.onSearch,
+  });
+
+  final TextEditingController controller;
+  final String rootPath;
+  final bool searching;
+  final ValueChanged<String> onRootChanged;
+  final VoidCallback onSearch;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.manage_search_rounded, color: cs.primary),
+                const SizedBox(width: 8),
+                Text(
+                  'بحث داخل الكمبيوتر',
+                  style: Theme.of(context)
+                      .textTheme
+                      .titleMedium
+                      ?.copyWith(fontWeight: FontWeight.w900),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: controller,
+              textInputAction: TextInputAction.search,
+              onSubmitted: (_) => onSearch(),
+              decoration: const InputDecoration(
+                hintText: 'مثال: report.pdf أو صور أو setup',
+                prefixIcon: Icon(Icons.search_rounded),
+              ),
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: SegmentedButton<String>(
+                    segments: const [
+                      ButtonSegment(
+                        value: 'home',
+                        label: Text('ملفاتي'),
+                        icon: Icon(Icons.home_rounded),
+                      ),
+                      ButtonSegment(
+                        value: 'roots',
+                        label: Text('كل الأقراص'),
+                        icon: Icon(Icons.storage_rounded),
+                      ),
+                    ],
+                    selected: {rootPath},
+                    onSelectionChanged: (values) => onRootChanged(values.first),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                FilledButton.icon(
+                  onPressed: searching ? null : onSearch,
+                  icon: searching
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.search_rounded),
+                  label: Text(searching ? 'بحث...' : 'بحث'),
+                ),
+              ],
             ),
           ],
         ),

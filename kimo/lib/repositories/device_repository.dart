@@ -53,6 +53,14 @@ abstract class DeviceRepository {
     required String path,
   });
 
+  Future<RemoteFileListing> searchFiles({
+    required String userId,
+    required String deviceId,
+    required String query,
+    String rootPath = 'home',
+    int limit = 100,
+  });
+
   Future<CommandResponse?> runFileCommand({
     required String userId,
     required String deviceId,
