@@ -16,6 +16,8 @@ class TelegramNotifierService {
   final JsonFileStore store;
   final http.Client client;
 
+  static const Duration _httpTimeout = Duration(seconds: 15);
+
   bool get isConfigured =>
       config.telegramBotToken.trim().isNotEmpty &&
       config.telegramChatId.trim().isNotEmpty;
@@ -30,17 +32,20 @@ class TelegramNotifierService {
     final targetChatId = (chatId ?? config.telegramChatId).trim();
     if (targetChatId.isEmpty) return false;
     try {
-      final response = await client.post(
-        Uri.parse(_api('sendMessage')),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'chat_id': targetChatId,
-          'text': message,
-          'disable_web_page_preview': true,
-          if (replyToMessageId != null) 'reply_to_message_id': replyToMessageId,
-          if (replyMarkup != null) 'reply_markup': replyMarkup,
-        }),
-      );
+      final response = await client
+          .post(
+            Uri.parse(_api('sendMessage')),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'chat_id': targetChatId,
+              'text': message,
+              'disable_web_page_preview': true,
+              if (replyToMessageId != null)
+                'reply_to_message_id': replyToMessageId,
+              if (replyMarkup != null) 'reply_markup': replyMarkup,
+            }),
+          )
+          .timeout(_httpTimeout);
       if (response.statusCode < 200 || response.statusCode >= 300) {
         await store.appendLog('telegram_send_error',
             'Telegram sendMessage failed: ${response.statusCode}', {
@@ -58,13 +63,15 @@ class TelegramNotifierService {
   Future<List<Map<String, dynamic>>> getUpdates({int? offset}) async {
     if (config.telegramBotToken.trim().isEmpty) return const [];
     try {
-      final response = await client.get(
-        Uri.parse(_api('getUpdates')).replace(queryParameters: {
-          if (offset != null) 'offset': offset.toString(),
-          'timeout': '0',
-          'allowed_updates': jsonEncode(['message']),
-        }),
-      );
+      final response = await client
+          .get(
+            Uri.parse(_api('getUpdates')).replace(queryParameters: {
+              if (offset != null) 'offset': offset.toString(),
+              'timeout': '0',
+              'allowed_updates': jsonEncode(['message']),
+            }),
+          )
+          .timeout(_httpTimeout);
       if (response.statusCode < 200 || response.statusCode >= 300) {
         await store.appendLog('telegram_updates_error',
             'Telegram getUpdates failed: ${response.statusCode}', {
@@ -88,13 +95,15 @@ class TelegramNotifierService {
   Future<bool> deleteWebhook({bool dropPendingUpdates = false}) async {
     if (config.telegramBotToken.trim().isEmpty) return false;
     try {
-      final response = await client.post(
-        Uri.parse(_api('deleteWebhook')),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'drop_pending_updates': dropPendingUpdates,
-        }),
-      );
+      final response = await client
+          .post(
+            Uri.parse(_api('deleteWebhook')),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'drop_pending_updates': dropPendingUpdates,
+            }),
+          )
+          .timeout(_httpTimeout);
       if (response.statusCode < 200 || response.statusCode >= 300) {
         await store.appendLog('telegram_delete_webhook_error',
             'Telegram deleteWebhook failed: ${response.statusCode}', {
@@ -121,8 +130,8 @@ class TelegramNotifierService {
             ..fields['caption'] = caption
             ..files.add(await http.MultipartFile.fromPath('photo', filePath));
 
-      final response = await request.send();
-      final body = await response.stream.bytesToString();
+      final response = await request.send().timeout(_httpTimeout);
+      final body = await response.stream.bytesToString().timeout(_httpTimeout);
       if (response.statusCode < 200 || response.statusCode >= 300) {
         await store.appendLog('telegram_photo_error',
             'Telegram sendPhoto failed: ${response.statusCode}', {

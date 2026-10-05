@@ -6,6 +6,7 @@ import 'package:image/image.dart' as img;
 import 'package:qr/qr.dart';
 
 import '../utils/json_file_store.dart';
+import '../utils/process_runner.dart';
 import 'device_identity_service.dart';
 import 'firestore_rest_client.dart';
 
@@ -273,7 +274,7 @@ $form.Add_FormClosed({
         .replaceAll('__PAYLOAD_PATH__', payloadPathJson)
         .replaceAll('__VISIBLE_MS__', visibleMs.toString());
 
-    await Process.run(
+    await SafeProcessRunner.run(
       'powershell.exe',
       [
         '-NoProfile',
@@ -284,6 +285,7 @@ $form.Add_FormClosed({
         script,
       ],
       runInShell: false,
+      timeout: const Duration(minutes: 3),
     );
   }
 }

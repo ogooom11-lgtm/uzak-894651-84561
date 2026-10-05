@@ -3,6 +3,7 @@ import 'dart:io';
 
 import '../config/self_setup_config.dart';
 import '../utils/json_file_store.dart';
+import '../utils/process_runner.dart';
 
 class StartupTaskService {
   StartupTaskService({
@@ -16,8 +17,11 @@ class StartupTaskService {
   Future<bool> isInstalled() async {
     if (!Platform.isWindows) return false;
     try {
-      final result =
-          await Process.run('schtasks.exe', ['/Query', '/TN', taskName]);
+      final result = await SafeProcessRunner.run(
+        'schtasks.exe',
+        ['/Query', '/TN', taskName],
+        timeout: SafeProcessRunner.shortTimeout,
+      );
       return result.exitCode == 0;
     } catch (_) {
       return false;
@@ -50,10 +54,9 @@ Start-Process -FilePath 'powershell.exe' -Verb RunAs -WindowStyle Hidden -Argume
 )
 ''';
 
-    final result = await Process.run(
-      'powershell.exe',
-      ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', launcher],
-      runInShell: false,
+    final result = await SafeProcessRunner.powershell(
+      launcher,
+      timeout: SafeProcessRunner.shortTimeout,
     );
     if (result.exitCode != 0) {
       throw StateError(

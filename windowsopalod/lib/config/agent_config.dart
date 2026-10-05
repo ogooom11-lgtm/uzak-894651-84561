@@ -31,8 +31,8 @@ class AgentConfig {
     this.demoUserId = 'local_demo_user',
     this.appVersion = '0.1.0',
     this.pollCommandsEverySeconds = 3,
-    this.syncOpenAppsEverySeconds = 8,
-    this.scanExplorerEverySeconds = 2,
+    this.syncOpenAppsEverySeconds = 10,
+    this.scanExplorerEverySeconds = 5,
     this.autoCreatePairingToken = true,
     this.deleteCommandsAfterExecution = false,
     this.enableStartupRegistrationFromCode = false,
@@ -59,17 +59,17 @@ class AgentConfig {
       demoUserId: (map['demoUserId'] ?? 'local_demo_user').toString(),
       appVersion: (map['appVersion'] ?? '0.1.0').toString(),
       pollCommandsEverySeconds:
-          (map['pollCommandsEverySeconds'] as num?)?.toInt() ?? 3,
+          _readSeconds(map['pollCommandsEverySeconds'], fallback: 3, min: 2),
       syncOpenAppsEverySeconds:
-          (map['syncOpenAppsEverySeconds'] as num?)?.toInt() ?? 8,
+          _readSeconds(map['syncOpenAppsEverySeconds'], fallback: 10, min: 6),
       scanExplorerEverySeconds:
-          (map['scanExplorerEverySeconds'] as num?)?.toInt() ?? 2,
+          _readSeconds(map['scanExplorerEverySeconds'], fallback: 5, min: 3),
       autoCreatePairingToken: map['autoCreatePairingToken'] != false,
       deleteCommandsAfterExecution: map['deleteCommandsAfterExecution'] == true,
       enableStartupRegistrationFromCode:
           map['enableStartupRegistrationFromCode'] == true,
-      enableDangerousPowerCommands: map['enableDangerousPowerCommands'] != true,
-      enableWifiBluetoothCommands: map['enableWifiBluetoothCommands'] != true,
+      enableDangerousPowerCommands: map['enableDangerousPowerCommands'] != false,
+      enableWifiBluetoothCommands: map['enableWifiBluetoothCommands'] != false,
       defaultPasswordAllowMinutes:
           (map['defaultPasswordAllowMinutes'] as num?)?.toInt() ?? 10,
       googleDriveServiceAccountJsonPath:
@@ -83,6 +83,18 @@ class AgentConfig {
       telegramBotToken: (map['telegramBotToken'] ?? '').toString(),
       telegramChatId: (map['telegramChatId'] ?? '').toString(),
     );
+  }
+
+  static int _readSeconds(
+    dynamic value, {
+    required int fallback,
+    required int min,
+  }) {
+    final seconds = value is num
+        ? value.toInt()
+        : int.tryParse((value ?? '').toString()) ?? fallback;
+    if (seconds < min) return min;
+    return seconds;
   }
 
   static Future<File> _findConfigFile() async {

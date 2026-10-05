@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import '../utils/json_file_store.dart';
+import '../utils/process_runner.dart';
 
 class SingleInstanceService {
   SingleInstanceService({required this.store});
@@ -33,10 +34,11 @@ class SingleInstanceService {
   }
 
   Future<void> _killPid(int processId) async {
-    await Process.run(
+    await SafeProcessRunner.run(
       'taskkill.exe',
       ['/PID', processId.toString(), '/F'],
       runInShell: false,
+      timeout: SafeProcessRunner.shortTimeout,
     );
   }
 
@@ -60,10 +62,9 @@ Get-CimInstance Win32_Process | Where-Object {
   try { Stop-Process -Id \$_.ProcessId -Force -ErrorAction SilentlyContinue } catch {}
 }
 ''';
-    await Process.run(
-      'powershell.exe',
-      ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', script],
-      runInShell: false,
+    await SafeProcessRunner.powershell(
+      script,
+      timeout: const Duration(seconds: 8),
     );
   }
 }

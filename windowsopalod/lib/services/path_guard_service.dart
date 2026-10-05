@@ -1,10 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
-
 import '../config/agent_config.dart';
 import '../models/path_rule.dart';
 import '../utils/json_file_store.dart';
+import '../utils/process_runner.dart';
 import 'dialog_service.dart';
 import 'firestore_rest_client.dart';
 import 'path_rule_store.dart';
@@ -20,6 +19,7 @@ class PathGuardService {
   final TelegramNotifierService? telegram;
 
   Timer? _timer;
+  bool _scanInProgress = false;
   final Map<String, DateTime> _allowedUntil = {};
   final Map<String, DateTime> _lastPromptAt = {};
   Map<int, String> _lastExplorerPaths = {};
@@ -46,32 +46,46 @@ class PathGuardService {
   void stop() => _timer?.cancel();
 
   Future<void> _scan() async {
-    final rules = ruleStore.getRules();
-    final windows = await _getExplorerWindows();
-    await _writeExplorerPathLogs(windows);
-    if (rules.isEmpty) return;
-
-    for (final win in windows) {
-      final path = (win['path'] ?? '').toString();
-      final hwnd = (win['hwnd'] as num?)?.toInt() ?? 0;
-
-      if (path.isEmpty || hwnd == 0) continue;
-
-      for (final rule in rules) {
-        if (!_isInside(path, rule.path)) {
-          continue;
-        }
-        if (_isTemporarilyAllowed(rule.id) ||
-            await _isApprovedByPhone(rule, path)) {
-          continue;
-        }
-        if (_recentlyPrompted(rule.id, path)) {
-          continue;
-        }
-
-        await _handleRule(rule, path, hwnd);
-        break;
+    if (_scanInProgress) return;
+    _scanInProgress = true;
+    try {
+      final rules = ruleStore.getRules();
+      if (rules.isEmpty) {
+        _lastExplorerPaths = {};
+        return;
       }
+
+      final windows = await _getExplorerWindows();
+      await _writeExplorerPathLogs(windows);
+
+      for (final win in windows) {
+        final path = (win['path'] ?? '').toString();
+        final hwnd = (win['hwnd'] as num?)?.toInt() ?? 0;
+
+        if (path.isEmpty || hwnd == 0) continue;
+
+        for (final rule in rules) {
+          if (!_isInside(path, rule.path)) {
+            continue;
+          }
+          if (_isTemporarilyAllowed(rule.id) ||
+              await _isApprovedByPhone(rule, path)) {
+            continue;
+          }
+          if (_recentlyPrompted(rule.id, path)) {
+            continue;
+          }
+
+          await _handleRule(rule, path, hwnd);
+          break;
+        }
+      }
+    } catch (e, st) {
+      await store.appendLog('path_guard_scan_error', e.toString(), {
+        'stack': st.toString(),
+      });
+    } finally {
+      _scanInProgress = false;
     }
   }
 
@@ -275,16 +289,9 @@ foreach ($w in $shell.Windows()) {
 $items | ConvertTo-Json -Compress -Depth 3
 ''';
 
-    final result = await Process.run(
-      'powershell.exe',
-      [
-        '-NoProfile',
-        '-ExecutionPolicy',
-        'Bypass',
-        '-Command',
-        script,
-      ],
-      runInShell: false,
+    final result = await SafeProcessRunner.powershell(
+      script,
+      timeout: const Duration(seconds: 8),
     );
 
     final text = result.stdout.toString().trim();
@@ -330,16 +337,9 @@ foreach (\$w in \$shell.Windows()) {
 }
 ''';
 
-    await Process.run(
-      'powershell.exe',
-      [
-        '-NoProfile',
-        '-ExecutionPolicy',
-        'Bypass',
-        '-Command',
-        script,
-      ],
-      runInShell: false,
+    await SafeProcessRunner.powershell(
+      script,
+      timeout: SafeProcessRunner.shortTimeout,
     );
   }
 }

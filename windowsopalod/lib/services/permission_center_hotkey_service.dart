@@ -4,6 +4,7 @@ import 'dart:ffi';
 import 'dart:io';
 
 import '../utils/json_file_store.dart';
+import '../utils/process_runner.dart';
 import 'firestore_rest_client.dart';
 import 'permission_state_service.dart';
 import 'startup_task_service.dart';
@@ -153,7 +154,7 @@ class PermissionCenterHotkeyService {
       await store.appendLog('permission_center_open', 'فتح شاشة أذونات KIOM',
           {'stateFile': stateFile.path});
 
-      final result = await Process.run(
+      final result = await SafeProcessRunner.run(
         'powershell.exe',
         [
           '-NoProfile',
@@ -166,6 +167,7 @@ class PermissionCenterHotkeyService {
           outputFile.path,
         ],
         runInShell: false,
+        timeout: const Duration(minutes: 5),
       );
 
       if (result.exitCode != 0) {

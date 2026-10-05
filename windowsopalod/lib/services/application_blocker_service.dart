@@ -6,6 +6,7 @@ import 'package:crypto/crypto.dart';
 
 import '../models/open_app_info.dart';
 import '../utils/json_file_store.dart';
+import '../utils/process_runner.dart';
 import 'process_monitor_service.dart';
 import 'telegram_notifier_service.dart';
 
@@ -21,8 +22,11 @@ class ApplicationBlockerService {
   final TelegramNotifierService? telegram;
 
   Timer? _timer;
+  bool _tickInProgress = false;
   final Map<int, DateTime> _recentKillAttempts = {};
   String? _lastHostsFingerprint;
+  String? _lastFailedHostsFingerprint;
+  DateTime? _lastHostsWriteFailureAt;
   DateTime? _lastHostsPermissionNoticeAt;
 
   void start() {
@@ -34,8 +38,14 @@ class ApplicationBlockerService {
   void stop() => _timer?.cancel();
 
   Future<void> _tick() async {
-    await enforceBlockedApps();
-    await _rewriteHostsFile();
+    if (_tickInProgress) return;
+    _tickInProgress = true;
+    try {
+      await enforceBlockedApps();
+      await _rewriteHostsFile();
+    } finally {
+      _tickInProgress = false;
+    }
   }
 
   List<Map<String, dynamic>> blockedApps() {
@@ -199,9 +209,10 @@ class ApplicationBlockerService {
       if (_isTemporarilyAllowed(rule)) continue;
       if (_recentlyTried(app.processId)) continue;
 
-      final result = await Process.run(
+      final result = await SafeProcessRunner.run(
         'taskkill.exe',
         ['/PID', app.processId.toString(), '/F'],
+        timeout: SafeProcessRunner.shortTimeout,
       );
       await store.appendLog(
         result.exitCode == 0 ? 'blocked_app_closed' : 'blocked_app_close_error',
@@ -266,6 +277,9 @@ class ApplicationBlockerService {
 
   bool _recentlyTried(int processId) {
     final now = DateTime.now();
+    _recentKillAttempts.removeWhere(
+      (_, at) => now.difference(at).inSeconds > 30,
+    );
     final last = _recentKillAttempts[processId];
     _recentKillAttempts[processId] = now;
     return last != null && now.difference(last).inSeconds < 3;
@@ -334,6 +348,12 @@ class ApplicationBlockerService {
         .toSet();
     final fingerprint = (activeDomains.toList()..sort()).join('|');
     if (fingerprint == _lastHostsFingerprint) return;
+    final lastFailureAt = _lastHostsWriteFailureAt;
+    if (fingerprint == _lastFailedHostsFingerprint &&
+        lastFailureAt != null &&
+        DateTime.now().difference(lastFailureAt).inSeconds < 30) {
+      return;
+    }
 
     final generated = <String>[
       start,
@@ -353,18 +373,32 @@ class ApplicationBlockerService {
           )
           .trimRight();
       await hosts.writeAsString('$cleaned\r\n$generated\r\n');
-      await Process.run('ipconfig.exe', ['/flushdns']);
-      _lastHostsFingerprint = fingerprint;
-    } catch (e) {
-      await store.appendLog(
-        'site_block_hosts_error',
-        'تعذر تعديل ملف hosts. شغل التطبيق كمسؤول.',
-        {
-          'error': e.toString(),
-          'domains': activeDomains.toList(),
-        },
+      await SafeProcessRunner.run(
+        'ipconfig.exe',
+        ['/flushdns'],
+        timeout: SafeProcessRunner.shortTimeout,
       );
+      _lastHostsFingerprint = fingerprint;
+      _lastFailedHostsFingerprint = null;
+      _lastHostsWriteFailureAt = null;
+    } catch (e) {
       final now = DateTime.now();
+      final previousFailureAt = _lastHostsWriteFailureAt;
+      _lastFailedHostsFingerprint = fingerprint;
+      _lastHostsWriteFailureAt = now;
+
+      if (previousFailureAt == null ||
+          now.difference(previousFailureAt).inMinutes >= 10) {
+        await store.appendLog(
+          'site_block_hosts_error',
+          'تعذر تعديل ملف hosts. شغل التطبيق كمسؤول.',
+          {
+            'error': e.toString(),
+            'domains': activeDomains.toList(),
+          },
+        );
+      }
+
       if (_lastHostsPermissionNoticeAt == null ||
           now.difference(_lastHostsPermissionNoticeAt!).inHours >= 6) {
         _lastHostsPermissionNoticeAt = now;

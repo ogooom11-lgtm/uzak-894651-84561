@@ -1,10 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
-
 import 'package:crypto/crypto.dart';
 
 import '../utils/json_file_store.dart';
+import '../utils/process_runner.dart';
 import 'firestore_rest_client.dart';
 
 class InstalledAppsSyncService {
@@ -12,7 +11,7 @@ class InstalledAppsSyncService {
     required this.deviceId,
     required this.firestore,
     required this.store,
-    this.interval = const Duration(minutes: 2),
+    this.interval = const Duration(minutes: 10),
   });
 
   final String deviceId;
@@ -22,6 +21,7 @@ class InstalledAppsSyncService {
 
   Timer? _timer;
   String? _lastFingerprint;
+  bool _syncInProgress = false;
 
   void start() {
     _timer?.cancel();
@@ -32,6 +32,8 @@ class InstalledAppsSyncService {
   void stop() => _timer?.cancel();
 
   Future<void> _sync() async {
+    if (_syncInProgress) return;
+    _syncInProgress = true;
     try {
       final apps = await _readInstalledApps();
       final fingerprint = _fingerprint(apps);
@@ -54,6 +56,8 @@ class InstalledAppsSyncService {
       });
     } catch (e) {
       await store.appendLog('installed_apps_sync_error', e.toString());
+    } finally {
+      _syncInProgress = false;
     }
   }
 
@@ -84,8 +88,10 @@ $items = foreach ($root in $roots) {
 $items | Sort-Object DisplayName -Unique | ConvertTo-Json -Compress -Depth 3
 ''';
 
-    final result = await Process.run('powershell.exe',
-        ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', script]);
+    final result = await SafeProcessRunner.powershell(
+      script,
+      timeout: SafeProcessRunner.longTimeout,
+    );
     if (result.exitCode != 0) return [];
     final text = result.stdout.toString().trim();
     if (text.isEmpty) return [];

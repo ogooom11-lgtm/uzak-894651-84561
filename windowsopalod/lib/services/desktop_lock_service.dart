@@ -1,7 +1,6 @@
 import 'dart:async';
-import 'dart:io';
-
 import '../utils/json_file_store.dart';
+import '../utils/process_runner.dart';
 
 class DesktopLockService {
   DesktopLockService({required this.store});
@@ -62,8 +61,11 @@ class DesktopLockService {
 
   Future<void> _lockWorkStation({required String reason}) async {
     _lastLockAttemptAt = DateTime.now();
-    final result =
-        await Process.run('rundll32.exe', ['user32.dll,LockWorkStation']);
+    final result = await SafeProcessRunner.run(
+      'rundll32.exe',
+      ['user32.dll,LockWorkStation'],
+      timeout: SafeProcessRunner.shortTimeout,
+    );
     await store.appendLog(
       result.exitCode == 0 ? 'desktop_locked' : 'desktop_lock_error',
       result.exitCode == 0 ? 'تم قفل شاشة Windows' : 'تعذر قفل شاشة Windows',

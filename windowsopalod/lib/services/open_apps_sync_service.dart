@@ -12,6 +12,7 @@ class OpenAppsSyncService {
   final JsonFileStore store;
   Timer? _timer;
   String? _lastFingerprint;
+  bool _syncInProgress = false;
 
   OpenAppsSyncService({
     required this.deviceId,
@@ -31,6 +32,8 @@ class OpenAppsSyncService {
   void stop() => _timer?.cancel();
 
   Future<void> _sync() async {
+    if (_syncInProgress) return;
+    _syncInProgress = true;
     try {
       final apps = await monitor.getOpenApps();
       final appMaps = apps.map((e) => e.toMap()).toList();
@@ -58,6 +61,8 @@ class OpenAppsSyncService {
       });
     } catch (e) {
       await store.appendLog('open_apps_sync_error', e.toString());
+    } finally {
+      _syncInProgress = false;
     }
   }
 

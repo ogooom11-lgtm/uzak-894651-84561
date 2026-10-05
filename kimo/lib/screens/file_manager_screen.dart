@@ -303,6 +303,20 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
               child: Text(_error!,
                   style: TextStyle(color: Theme.of(context).colorScheme.error)),
             ),
+          if (listing?.truncated == true)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+              child: Card(
+                color: Theme.of(context).colorScheme.secondaryContainer,
+                child: ListTile(
+                  leading: const Icon(Icons.info_outline),
+                  title: const Text('تم عرض جزء من الملفات فقط'),
+                  subtitle: Text(
+                    'للحفاظ على سرعة الكمبيوتر تم إظهار أول ${listing?.limit ?? listing?.items.length} عنصر.',
+                  ),
+                ),
+              ),
+            ),
           Expanded(
             child: _loading && listing == null
                 ? const Center(child: CircularProgressIndicator())

@@ -18,6 +18,8 @@ class FirestoreRestClient {
   DateTime? _tokenExpiresAt;
   bool _anonymousAuthUnavailable = false;
 
+  static const Duration _httpTimeout = Duration(seconds: 15);
+
   String get _base =>
       'https://firestore.googleapis.com/v1/projects/${config.projectId}/databases/${Uri.encodeComponent(config.databaseId)}/documents';
 
@@ -30,7 +32,7 @@ class FirestoreRestClient {
   }
 
   Future<bool> documentExists(String path) async {
-    final response = await http.get(_uri(path), headers: await _headers());
+    final response = await _get(_uri(path), headers: await _headers());
     if (response.statusCode == 200) return true;
     if (response.statusCode == 404) return false;
     if (response.statusCode < 200 || response.statusCode >= 300) {
@@ -48,7 +50,7 @@ class FirestoreRestClient {
     final sep = baseUrl.contains('?') ? '&' : '?';
     final url = maskQuery.isEmpty ? baseUrl : '$baseUrl$sep$maskQuery';
 
-    final response = await http.patch(
+    final response = await _patch(
       Uri.parse(url),
       headers: await _headers(jsonBody: true),
       body: jsonEncode({'fields': _toFields(data)}),
@@ -66,7 +68,7 @@ class FirestoreRestClient {
     Map<String, dynamic> data,
   ) async {
     final uri = _uri(collectionPath, {'documentId': documentId});
-    final response = await http.post(
+    final response = await _post(
       uri,
       headers: await _headers(jsonBody: true),
       body: jsonEncode({'fields': _toFields(data)}),
@@ -86,7 +88,7 @@ class FirestoreRestClient {
   Future<List<Map<String, dynamic>>> listDocuments(
       String collectionPath) async {
     final response =
-        await http.get(_uri(collectionPath), headers: await _headers());
+        await _get(_uri(collectionPath), headers: await _headers());
     if (response.statusCode == 404) return [];
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw StateError(
@@ -109,7 +111,7 @@ class FirestoreRestClient {
   }
 
   Future<void> deleteDocument(String path) async {
-    final response = await http.delete(_uri(path), headers: await _headers());
+    final response = await _delete(_uri(path), headers: await _headers());
     if (response.statusCode == 404) return;
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw StateError(
@@ -444,6 +446,30 @@ class FirestoreRestClient {
     return DateTime.tryParse(value) != null;
   }
 
+  Future<http.Response> _get(Uri uri, {Map<String, String>? headers}) {
+    return http.get(uri, headers: headers).timeout(_httpTimeout);
+  }
+
+  Future<http.Response> _post(
+    Uri uri, {
+    Map<String, String>? headers,
+    Object? body,
+  }) {
+    return http.post(uri, headers: headers, body: body).timeout(_httpTimeout);
+  }
+
+  Future<http.Response> _patch(
+    Uri uri, {
+    Map<String, String>? headers,
+    Object? body,
+  }) {
+    return http.patch(uri, headers: headers, body: body).timeout(_httpTimeout);
+  }
+
+  Future<http.Response> _delete(Uri uri, {Map<String, String>? headers}) {
+    return http.delete(uri, headers: headers).timeout(_httpTimeout);
+  }
+
   Future<Map<String, String>> _headers({bool jsonBody = false}) async {
     final headers = <String, String>{};
     if (jsonBody) headers['Content-Type'] = 'application/json';
@@ -499,7 +525,7 @@ class FirestoreRestClient {
       'https://identitytoolkit.googleapis.com/v1/accounts:signUp',
     ).replace(queryParameters: {'key': config.apiKey});
 
-    final response = await http.post(
+    final response = await _post(
       uri,
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({'returnSecureToken': true}),
@@ -518,7 +544,7 @@ class FirestoreRestClient {
     final uri = Uri.parse('https://securetoken.googleapis.com/v1/token')
         .replace(queryParameters: {'key': config.apiKey});
 
-    final response = await http.post(
+    final response = await _post(
       uri,
       headers: {'Content-Type': 'application/x-www-form-urlencoded'},
       body: Uri(queryParameters: {

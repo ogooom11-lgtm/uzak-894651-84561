@@ -8,6 +8,8 @@ import 'services/startup_task_service.dart';
 import 'utils/json_file_store.dart';
 
 late final KiomPcAgentApp _agentApp;
+final ValueNotifier<String> _agentStatusNotifier =
+    ValueNotifier<String>('جاري تشغيل خدمات KIOM في الخلفية...');
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -20,14 +22,23 @@ Future<void> main() async {
   await runZonedGuarded<Future<void>>(
     () async {
       _agentApp = KiomPcAgentApp();
-      await _agentApp.start();
-
       runApp(const KiomHiddenAgentShell());
+      unawaited(_startAgentSafely());
     },
     (Object error, StackTrace stack) {
       unawaited(_writeStartupLog(error, stack));
     },
   );
+}
+
+Future<void> _startAgentSafely() async {
+  try {
+    await _agentApp.start();
+    _agentStatusNotifier.value = 'الخدمات تعمل ومنظمة في الخلفية';
+  } catch (error, stack) {
+    _agentStatusNotifier.value = 'تعذر تشغيل الخدمات: $error';
+    await _writeStartupLog(error, stack);
+  }
 }
 
 Future<void> _writeStartupLog(Object error, StackTrace? stack) async {
@@ -82,7 +93,7 @@ class _AgentHomePage extends StatefulWidget {
 
 class _AgentHomePageState extends State<_AgentHomePage> {
   bool _busy = false;
-  String _status = 'جاهز';
+  String _status = 'جاهز للأوامر اليدوية';
 
   Future<void> _writeTrigger(String fileName, String doneMessage) async {
     setState(() {
@@ -157,7 +168,12 @@ class _AgentHomePageState extends State<_AgentHomePage> {
                                 ?.copyWith(fontWeight: FontWeight.w900),
                           ),
                           const SizedBox(height: 4),
-                          Text(_status),
+                          ValueListenableBuilder<String>(
+                            valueListenable: _agentStatusNotifier,
+                            builder: (context, agentStatus, _) {
+                              return Text('$agentStatus\n$_status');
+                            },
+                          ),
                         ],
                       ),
                     ),

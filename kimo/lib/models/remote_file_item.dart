@@ -5,11 +5,15 @@ class RemoteFileListing {
     required this.path,
     required this.items,
     this.parentPath,
+    this.truncated = false,
+    this.limit,
   });
 
   final String path;
   final String? parentPath;
   final List<RemoteFileItem> items;
+  final bool truncated;
+  final int? limit;
 
   factory RemoteFileListing.fromPayload(Map<String, dynamic> payload) {
     final source = payload['items'] == null && payload['payload'] is Map
@@ -26,6 +30,8 @@ class RemoteFileListing {
       path: (source['path'] ?? 'roots').toString(),
       parentPath: source['parentPath']?.toString(),
       items: items,
+      truncated: source['truncated'] == true,
+      limit: int.tryParse('${source['limit'] ?? ''}'),
     );
   }
 }

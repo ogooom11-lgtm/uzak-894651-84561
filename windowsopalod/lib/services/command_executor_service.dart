@@ -8,6 +8,7 @@ import '../config/agent_config.dart';
 import '../models/path_rule.dart';
 import '../models/remote_command.dart';
 import '../utils/json_file_store.dart';
+import '../utils/process_runner.dart';
 import 'application_blocker_service.dart';
 import 'desktop_lock_service.dart';
 import 'dialog_service.dart';
@@ -1285,8 +1286,11 @@ class CommandExecutorService {
     ProcessResult result;
 
     if (processId != null && processId > 0) {
-      result = await Process.run(
-          'taskkill.exe', ['/PID', processId.toString(), '/F']);
+      result = await SafeProcessRunner.run(
+        'taskkill.exe',
+        ['/PID', processId.toString(), '/F'],
+        timeout: SafeProcessRunner.shortTimeout,
+      );
       return _CommandProcessResult(
         success: result.exitCode == 0,
         message: result.exitCode == 0
@@ -1305,7 +1309,11 @@ class CommandExecutorService {
 
     final normalized =
         target.toLowerCase().endsWith('.exe') ? target : '$target.exe';
-    result = await Process.run('taskkill.exe', ['/IM', normalized, '/F']);
+    result = await SafeProcessRunner.run(
+      'taskkill.exe',
+      ['/IM', normalized, '/F'],
+      timeout: SafeProcessRunner.shortTimeout,
+    );
 
     return _CommandProcessResult(
       success: result.exitCode == 0,

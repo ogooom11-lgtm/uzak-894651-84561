@@ -1,6 +1,6 @@
 import 'dart:convert';
-import 'dart:io';
 import '../models/open_app_info.dart';
+import '../utils/process_runner.dart';
 
 class ProcessMonitorService {
   Future<List<OpenAppInfo>> getOpenApps() async {
@@ -17,8 +17,10 @@ $items = Get-Process | Where-Object { $_.MainWindowTitle -ne $null -and $_.MainW
 }
 $items | ConvertTo-Json -Compress -Depth 3
 ''';
-    final result = await Process.run('powershell.exe',
-        ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', script]);
+    final result = await SafeProcessRunner.powershell(
+      script,
+      timeout: const Duration(seconds: 8),
+    );
     if (result.exitCode != 0) return [];
     final text = result.stdout.toString().trim();
     if (text.isEmpty) return [];

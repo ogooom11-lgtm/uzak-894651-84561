@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
 
+import '../utils/process_runner.dart';
+
 class WindowsControlResult {
   const WindowsControlResult({
     required this.success,
@@ -310,15 +312,27 @@ Start-Process fsquirt.exe -ArgumentList '-send'
     switch (action) {
       case 'shutdown_pc':
       case 'shutdown':
-        result = await Process.run('shutdown.exe', ['/s', '/t', '0']);
+        result = await SafeProcessRunner.run(
+          'shutdown.exe',
+          ['/s', '/t', '0'],
+          timeout: SafeProcessRunner.shortTimeout,
+        );
         break;
       case 'restart_pc':
       case 'restart':
-        result = await Process.run('shutdown.exe', ['/r', '/t', '0']);
+        result = await SafeProcessRunner.run(
+          'shutdown.exe',
+          ['/r', '/t', '0'],
+          timeout: SafeProcessRunner.shortTimeout,
+        );
         break;
       case 'logout_user':
       case 'logout':
-        result = await Process.run('shutdown.exe', ['/l']);
+        result = await SafeProcessRunner.run(
+          'shutdown.exe',
+          ['/l'],
+          timeout: SafeProcessRunner.shortTimeout,
+        );
         break;
       default:
         throw StateError('أمر طاقة غير معروف: $action');
@@ -388,10 +402,9 @@ $_audioPowerShell
   }
 
   Future<ProcessResult> _runPowerShell(String script) {
-    return Process.run(
-      'powershell.exe',
-      ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', script],
-      runInShell: false,
+    return SafeProcessRunner.powershell(
+      script,
+      timeout: SafeProcessRunner.defaultTimeout,
     );
   }
 

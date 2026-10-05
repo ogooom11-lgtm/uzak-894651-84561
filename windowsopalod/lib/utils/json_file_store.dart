@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -5,6 +6,7 @@ class JsonFileStore {
   final Directory dir;
   final File file;
   Map<String, dynamic> _data = <String, dynamic>{};
+  Future<void> _saveQueue = Future<void>.value();
 
   JsonFileStore._(this.dir, this.file);
 
@@ -38,8 +40,29 @@ class JsonFileStore {
     }
   }
 
-  Future<void> save() async {
-    await file.writeAsString(const JsonEncoder.withIndent('  ').convert(_data));
+  Future<void> save() {
+    // Several background services append logs or update state at the same time.
+    // Serializing writes and using an atomic replace prevents a half-written
+    // JSON file from corrupting the local store or freezing the next startup.
+    final snapshot = jsonDecode(
+      jsonEncode(_data),
+    ) as Map<String, dynamic>;
+    _saveQueue = _saveQueue.catchError((_) {}).then((_) async {
+      final temp = File('${file.path}.tmp');
+      await temp.writeAsString(
+        const JsonEncoder.withIndent('  ').convert(snapshot),
+        flush: true,
+      );
+      try {
+        await temp.rename(file.path);
+      } catch (_) {
+        await temp.copy(file.path);
+        try {
+          await temp.delete();
+        } catch (_) {}
+      }
+    });
+    return _saveQueue;
   }
 
   T? get<T>(String key) => _data[key] as T?;

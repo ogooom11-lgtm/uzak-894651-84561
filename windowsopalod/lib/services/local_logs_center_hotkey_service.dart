@@ -4,6 +4,7 @@ import 'dart:ffi';
 import 'dart:io';
 
 import '../utils/json_file_store.dart';
+import '../utils/process_runner.dart';
 import 'firestore_rest_client.dart';
 
 class LocalLogsCenterHotkeyService {
@@ -97,7 +98,7 @@ class LocalLogsCenterHotkeyService {
         'dataUsageBytes': dataUsageBytes,
       });
 
-      await Process.run(
+      await SafeProcessRunner.run(
         'powershell.exe',
         [
           '-NoProfile',
@@ -110,6 +111,7 @@ class LocalLogsCenterHotkeyService {
           outputFile.path,
         ],
         runInShell: false,
+        timeout: const Duration(minutes: 5),
       );
 
       if (!await outputFile.exists()) return;

@@ -3,7 +3,10 @@ import 'dart:io';
 
 import 'package:path/path.dart' as p;
 
+import '../utils/process_runner.dart';
+
 class FileManagerService {
+  static const int _maxDirectoryItems = 500;
   final p.Context _paths = p.Context(style: p.Style.windows);
 
   Future<Map<String, dynamic>> listPath(String requestedPath) async {
@@ -30,7 +33,12 @@ class FileManagerService {
 
     final dir = Directory(resolved);
     final items = <Map<String, dynamic>>[];
+    var truncated = false;
     await for (final entity in dir.list(followLinks: false)) {
+      if (items.length >= _maxDirectoryItems) {
+        truncated = true;
+        break;
+      }
       try {
         items.add(await _entityToMap(entity));
       } catch (_) {
@@ -52,12 +60,18 @@ class FileManagerService {
       'path': resolved,
       'parentPath': _parentOf(resolved),
       'items': items,
+      'truncated': truncated,
+      'limit': _maxDirectoryItems,
     };
   }
 
   Future<Map<String, dynamic>> openPath(String path) async {
     final resolved = _resolveSpecialPath(path);
-    final result = await Process.run('explorer.exe', [resolved]);
+    final result = await SafeProcessRunner.run(
+      'explorer.exe',
+      [resolved],
+      timeout: SafeProcessRunner.shortTimeout,
+    );
     return {
       'path': resolved,
       'exitCode': result.exitCode,
@@ -140,7 +154,7 @@ if (Test-Path -LiteralPath $Path -PathType Container) {
   throw "Path not found: $Path"
 }
 ''';
-    final result = await Process.run(
+    final result = await SafeProcessRunner.run(
       'powershell.exe',
       [
         '-NoProfile',
@@ -150,6 +164,7 @@ if (Test-Path -LiteralPath $Path -PathType Container) {
         script,
         resolved
       ],
+      timeout: SafeProcessRunner.longTimeout,
     );
     if (result.exitCode != 0) {
       throw StateError(
@@ -161,7 +176,11 @@ if (Test-Path -LiteralPath $Path -PathType Container) {
   Future<Map<String, dynamic>> setHidden(String path, bool hidden) async {
     final resolved = _resolveSpecialPath(path);
     final args = [hidden ? '+h' : '-h', resolved];
-    final result = await Process.run('attrib.exe', args);
+    final result = await SafeProcessRunner.run(
+      'attrib.exe',
+      args,
+      timeout: SafeProcessRunner.shortTimeout,
+    );
     if (result.exitCode != 0) {
       throw StateError(
           'تعذر تغيير حالة الإخفاء: ${result.stderr}${result.stdout}');
@@ -170,8 +189,11 @@ if (Test-Path -LiteralPath $Path -PathType Container) {
   }
 
   Future<List<Map<String, dynamic>>> _listRoots() async {
-    final result = await Process.run('wmic.exe',
-        ['logicaldisk', 'get', 'name,volumename,drivetype', '/format:csv']);
+    final result = await SafeProcessRunner.run(
+      'wmic.exe',
+      ['logicaldisk', 'get', 'name,volumename,drivetype', '/format:csv'],
+      timeout: SafeProcessRunner.shortTimeout,
+    );
     final roots = <Map<String, dynamic>>[];
     if (result.exitCode == 0) {
       for (final line in result.stdout.toString().split(RegExp(r'\r?\n'))) {
@@ -198,13 +220,10 @@ $drives = Get-PSDrive -PSProvider FileSystem | ForEach-Object {
 }
 $drives | ConvertTo-Json -Compress -Depth 3
 ''';
-    final result = await Process.run('powershell.exe', [
-      '-NoProfile',
-      '-ExecutionPolicy',
-      'Bypass',
-      '-Command',
+    final result = await SafeProcessRunner.powershell(
       script,
-    ]);
+      timeout: SafeProcessRunner.shortTimeout,
+    );
     if (result.exitCode != 0 || result.stdout.toString().trim().isEmpty) {
       return [];
     }
@@ -262,21 +281,12 @@ $drives | ConvertTo-Json -Compress -Depth 3
       'extension': extension,
       'size': stat.size,
       'modifiedAt': stat.modified.toIso8601String(),
-      'isHidden': name.startsWith('.') || await _isHidden(entity.path),
+      // لا نستدعي PowerShell لكل عنصر لأن ذلك كان يجعل تصفح المجلدات الكبيرة
+      // بطيئاً جداً وقد يعلّق الكمبيوتر. حالة الإخفاء التفصيلية تُغيّر عند
+      // تنفيذ أمر hide/unhide، أما العرض هنا فيبقى سريعاً وخفيفاً.
+      'isHidden': name.startsWith('.'),
       'iconKey': _iconKey(type, extension, name),
     };
-  }
-
-  Future<bool> _isHidden(String path) async {
-    final result = await Process.run('powershell.exe', [
-      '-NoProfile',
-      '-ExecutionPolicy',
-      'Bypass',
-      '-Command',
-      r"(Get-Item -LiteralPath $args[0] -Force).Attributes.ToString()",
-      path,
-    ]);
-    return result.stdout.toString().toLowerCase().contains('hidden');
   }
 
   String _iconKey(String type, String extension, String name) {

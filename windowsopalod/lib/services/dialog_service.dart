@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
 
+import '../utils/process_runner.dart';
+
 class DialogService {
   Future<void> showMessage({
     required String title,
@@ -153,7 +155,7 @@ Add-Type -AssemblyName System.Windows.Forms
   }
 
   Future<ProcessResult> _runStaPowerShell(String script) {
-    return Process.run(
+    return SafeProcessRunner.run(
       'powershell.exe',
       [
         '-NoProfile',
@@ -164,6 +166,7 @@ Add-Type -AssemblyName System.Windows.Forms
         script,
       ],
       runInShell: false,
+      timeout: const Duration(minutes: 2),
     );
   }
 }

@@ -4,6 +4,7 @@ import 'package:crypto/crypto.dart';
 import 'package:uuid/uuid.dart';
 import '../config/agent_config.dart';
 import '../utils/json_file_store.dart';
+import '../utils/process_runner.dart';
 
 class DeviceIdentityService {
   final JsonFileStore store;
@@ -70,7 +71,7 @@ class DeviceIdentityService {
   Future<String> _readWindowsMachineGuid() async {
     if (!Platform.isWindows) return '';
     try {
-      final result = await Process.run(
+      final result = await SafeProcessRunner.run(
         'reg.exe',
         [
           'query',
@@ -79,6 +80,7 @@ class DeviceIdentityService {
           'MachineGuid',
         ],
         runInShell: false,
+        timeout: SafeProcessRunner.shortTimeout,
       );
       if (result.exitCode != 0) return '';
       final match = RegExp(r'MachineGuid\s+REG_SZ\s+(.+)', caseSensitive: false)

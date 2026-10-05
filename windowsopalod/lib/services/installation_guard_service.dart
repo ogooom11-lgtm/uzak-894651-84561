@@ -2,8 +2,9 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'firestore_rest_client.dart';
 import '../utils/json_file_store.dart';
+import '../utils/process_runner.dart';
+import 'firestore_rest_client.dart';
 import 'telegram_notifier_service.dart';
 
 class InstallationGuardService {
@@ -12,7 +13,7 @@ class InstallationGuardService {
     required this.firestore,
     required this.store,
     this.telegram,
-    this.interval = const Duration(seconds: 2),
+    this.interval = const Duration(seconds: 8),
   });
 
   final String deviceId;
@@ -22,6 +23,7 @@ class InstallationGuardService {
   final Duration interval;
 
   Timer? _timer;
+  bool _scanInProgress = false;
   final Map<String, DateTime> _lastRequestAt = {};
   final Set<int> _recentKillAttempts = {};
 
@@ -34,6 +36,8 @@ class InstallationGuardService {
   void stop() => _timer?.cancel();
 
   Future<void> _scan() async {
+    if (_scanInProgress) return;
+    _scanInProgress = true;
     try {
       final installers = await _runningInstallers();
       if (installers.isEmpty) return;
@@ -48,6 +52,8 @@ class InstallationGuardService {
       }
     } catch (e) {
       await store.appendLog('install_guard_error', e.toString());
+    } finally {
+      _scanInProgress = false;
     }
   }
 
@@ -66,10 +72,9 @@ $items = Get-Process | ForEach-Object {
 $items | ConvertTo-Json -Compress -Depth 3
 ''';
 
-    final result = await Process.run(
-      'powershell.exe',
-      ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', script],
-      runInShell: false,
+    final result = await SafeProcessRunner.powershell(
+      script,
+      timeout: const Duration(seconds: 8),
     );
     if (result.exitCode != 0) return [];
 
@@ -218,10 +223,11 @@ $items | ConvertTo-Json -Compress -Depth 3
     if (processId <= 0 || _recentKillAttempts.contains(processId)) return;
     _recentKillAttempts.add(processId);
 
-    final result = await Process.run(
+    final result = await SafeProcessRunner.run(
       'taskkill.exe',
       ['/PID', processId.toString(), '/F'],
       runInShell: false,
+      timeout: SafeProcessRunner.shortTimeout,
     );
     await store.appendLog(
       result.exitCode == 0 ? 'install_blocked' : 'install_block_error',

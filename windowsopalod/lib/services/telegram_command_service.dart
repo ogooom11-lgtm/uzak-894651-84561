@@ -198,16 +198,23 @@ class TelegramCommandService {
   }
 
   _ParsedTelegramCommand? _parseCommand(String text) {
-    final normalized = text.trim();
+    final normalized = _normalizeCommandText(text);
+    if (normalized.isEmpty) return null;
     final lower = normalized.toLowerCase();
     final parts = normalized.split(RegExp(r'\s+'));
     final first = parts.first.toLowerCase();
     final rest = parts.length > 1 ? parts.sublist(1).join(' ').trim() : '';
 
-    if (lower == 'status' || lower == 'متصل' || lower == 'فحص') {
+    if (lower == 'status' ||
+        lower == 'متصل' ||
+        lower == 'فحص' ||
+        lower == 'الحالة') {
       return const _ParsedTelegramCommand('check_connection');
     }
-    if (lower == 'screenshot' || lower == 'screen' || lower == 'لقطة') {
+    if (lower == 'screenshot' ||
+        lower == 'screen' ||
+        lower == 'لقطة' ||
+        lower == 'صورة الشاشة') {
       return const _ParsedTelegramCommand('request_screenshot');
     }
     if (first == 'lock' || first == 'قفل') {
@@ -247,20 +254,27 @@ class TelegramCommandService {
     if (lower == 'unmute' || lower == 'الغاء كتم') {
       return const _ParsedTelegramCommand('unmute_volume');
     }
-    if (first == 'wifi' && rest.toLowerCase() == 'on') {
+    if ((first == 'wifi' && rest.toLowerCase() == 'on') ||
+        lower == 'تشغيل الواي فاي' ||
+        lower == 'واي فاي تشغيل') {
       return const _ParsedTelegramCommand('wifi_on');
     }
-    if (first == 'wifi' && rest.toLowerCase() == 'off') {
+    if ((first == 'wifi' && rest.toLowerCase() == 'off') ||
+        lower == 'ايقاف الواي فاي' ||
+        lower == 'إيقاف الواي فاي' ||
+        lower == 'واي فاي ايقاف') {
       return const _ParsedTelegramCommand('wifi_off');
     }
     if (lower == 'internet off' ||
         lower == 'net off' ||
-        lower == 'ايقاف الانترنت نهائيا') {
+        lower == 'ايقاف الانترنت نهائيا' ||
+        lower == 'إيقاف الانترنت نهائياً') {
       return const _ParsedTelegramCommand('internet_off_permanent');
     }
     if (lower == 'internet on' ||
         lower == 'net on' ||
-        lower == 'تشغيل الانترنت') {
+        lower == 'تشغيل الانترنت' ||
+        lower == 'تشغيل الإنترنت') {
       return const _ParsedTelegramCommand('internet_on');
     }
     if ((first == 'bluetooth' || first == 'bt') && rest.toLowerCase() == 'on') {
@@ -323,13 +337,16 @@ class TelegramCommandService {
       final path = normalized.substring('open '.length).trim();
       return _ParsedTelegramCommand('open_path', {'path': path});
     }
-    if (lower == 'logs' || lower == 'سجلات') {
+    if (lower == 'logs' || lower == 'سجلات' || lower == 'السجلات') {
       return const _ParsedTelegramCommand('request_logs');
     }
-    if (lower == 'qr') {
+    if (lower == 'qr' || lower == 'رمز الربط') {
       return const _ParsedTelegramCommand('show_pairing_qr');
     }
-    if (lower == 'permissions' || lower == 'اذونات') {
+    if (lower == 'permissions' ||
+        lower == 'اذونات' ||
+        lower == 'أذونات' ||
+        lower == 'الأذونات') {
       return const _ParsedTelegramCommand('show_permission_center');
     }
     if (lower == 'stop commands' || lower == 'ايقاف الاوامر') {
@@ -337,6 +354,28 @@ class TelegramCommandService {
     }
 
     return null;
+  }
+
+  String _normalizeCommandText(String text) {
+    var normalized = text.trim();
+    if (normalized.startsWith('/')) {
+      normalized = normalized.substring(1);
+      final spaceIndex = normalized.indexOf(' ');
+      final firstToken = spaceIndex == -1
+          ? normalized
+          : normalized.substring(0, spaceIndex);
+      final commandOnly = firstToken.split('@').first;
+      normalized = spaceIndex == -1
+          ? commandOnly
+          : '$commandOnly ${normalized.substring(spaceIndex + 1)}';
+    }
+
+    // أزرار Telegram قد تحتوي رموزاً أو شرطة طويلة؛ نجعل القراءة متسامحة.
+    normalized = normalized.replaceFirst(
+      RegExp(r'^[^A-Za-z0-9\u0600-\u06FF/]+'),
+      '',
+    );
+    return normalized.trim();
   }
 
   String _formatResult(String type, CommandExecutionResult result) {
@@ -409,27 +448,18 @@ class TelegramCommandService {
     return {
       'keyboard': [
         [button('/devices'), button('/use $deviceId'), button('/who')],
-        [button('/commands'), button('status'), button('screenshot')],
+        [button('status'), button('screenshot'), button('logs')],
         [button('lock'), button('lock 30'), button('unlock')],
-        [button('shutdown'), button('restart'), button('logout')],
-        [button('volume 0'), button('volume 25'), button('volume 50')],
-        [button('volume 75'), button('volume 100')],
-        [button('volup'), button('voldown'), button('mute'), button('unmute')],
+        [button('volume 25'), button('volume 50'), button('mute')],
+        [button('volup'), button('voldown'), button('unmute')],
         [button('wifi on'), button('wifi off')],
-        [button('internet off'), button('internet on')],
-        [button('bluetooth on'), button('bluetooth off')],
-        [button('bluetooth devices'), button('bluetooth receive')],
-        [button(r'bluetooth receive C:\Users\Public\Downloads')],
-        [button('close chrome.exe'), button('close msedge.exe')],
-        [button('message مرحبا من الهاتف')],
-        [button('block app chrome'), button('allow app chrome')],
-        [button('block app msedge'), button('allow app msedge')],
+        [button('internet on'), button('internet off')],
+        [button('bluetooth on'), button('bluetooth off'), button('bluetooth devices')],
+        [button('qr'), button('permissions'), button('help')],
+        [button('close chrome.exe'), button('message مرحبا من الهاتف')],
         [button('block site youtube.com'), button('allow site youtube.com')],
-        [button('block site facebook.com'), button('allow site facebook.com')],
-        [button('browse roots'), button(r'browse C:\'), button(r'open C:\')],
-        [button(r'browse C:\Users'), button(r'open C:\Users')],
-        [button('logs'), button('qr'), button('permissions')],
-        [button('stop commands'), button('help')],
+        [button('browse roots'), button(r'browse C:\Users')],
+        [button('stop commands')],
       ],
       'resize_keyboard': true,
       'is_persistent': true,
