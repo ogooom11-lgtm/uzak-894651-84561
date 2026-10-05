@@ -18,9 +18,14 @@ class TelegramNotifierService {
 
   static const Duration _httpTimeout = Duration(seconds: 15);
 
-  bool get isConfigured =>
-      config.telegramBotToken.trim().isNotEmpty &&
-      config.telegramChatId.trim().isNotEmpty;
+  String get effectiveChatId {
+    final override = (store.get<String>('telegramChatIdOverride') ?? '').trim();
+    return override.isNotEmpty ? override : config.telegramChatId.trim();
+  }
+
+  bool get hasBotToken => config.telegramBotToken.trim().isNotEmpty;
+
+  bool get isConfigured => hasBotToken && effectiveChatId.isNotEmpty;
 
   Future<bool> sendMessage(
     String message, {
@@ -28,8 +33,8 @@ class TelegramNotifierService {
     int? replyToMessageId,
     Map<String, dynamic>? replyMarkup,
   }) async {
-    if (config.telegramBotToken.trim().isEmpty) return false;
-    final targetChatId = (chatId ?? config.telegramChatId).trim();
+    if (!hasBotToken) return false;
+    final targetChatId = (chatId ?? effectiveChatId).trim();
     if (targetChatId.isEmpty) return false;
     try {
       final response = await client
@@ -61,7 +66,7 @@ class TelegramNotifierService {
   }
 
   Future<List<Map<String, dynamic>>> getUpdates({int? offset}) async {
-    if (config.telegramBotToken.trim().isEmpty) return const [];
+    if (!hasBotToken) return const [];
     try {
       final response = await client
           .get(
@@ -93,7 +98,7 @@ class TelegramNotifierService {
   }
 
   Future<bool> deleteWebhook({bool dropPendingUpdates = false}) async {
-    if (config.telegramBotToken.trim().isEmpty) return false;
+    if (!hasBotToken) return false;
     try {
       final response = await client
           .post(
@@ -122,7 +127,7 @@ class TelegramNotifierService {
     String callbackQueryId, {
     String text = '',
   }) async {
-    if (config.telegramBotToken.trim().isEmpty || callbackQueryId.isEmpty) {
+    if (!hasBotToken || callbackQueryId.isEmpty) {
       return false;
     }
     try {
@@ -151,7 +156,7 @@ class TelegramNotifierService {
     try {
       final request =
           http.MultipartRequest('POST', Uri.parse(_api('sendPhoto')))
-            ..fields['chat_id'] = config.telegramChatId
+            ..fields['chat_id'] = effectiveChatId
             ..fields['caption'] = caption
             ..files.add(await http.MultipartFile.fromPath('photo', filePath));
 

@@ -496,6 +496,19 @@ class CommandExecutorService {
             message = 'تم طلب فتح شاشة أذونات الكمبيوتر';
             break;
 
+          case 'configure_telegram_chat':
+            final result = await _configureTelegramChat(command.payload);
+            success = result.success;
+            message = result.message;
+            responsePayload = result.payload;
+            await firestore.setDocument('devices/$deviceId', {
+              'telegramChatIdConfigured': true,
+              'telegramChatIdMasked': responsePayload['chatIdMasked'],
+              'telegramBotUrl': responsePayload['botUrl'],
+              'telegramLinkedAt': DateTime.now().toIso8601String(),
+            });
+            break;
+
           case 'show_message':
             final text =
                 (command.payload['message'] ?? command.payload['text'] ?? '')
@@ -1221,6 +1234,13 @@ class CommandExecutorService {
             message = 'تم طلب فتح شاشة الأذونات على الكمبيوتر';
             break;
 
+          case 'configure_telegram_chat':
+            final result = await _configureTelegramChat(command.payload);
+            success = result.success;
+            message = result.message;
+            responsePayload = result.payload;
+            break;
+
           case 'show_message':
             final text =
                 (command.payload['message'] ?? command.payload['text'] ?? '')
@@ -1420,6 +1440,7 @@ class CommandExecutorService {
         return 'installProtection';
       case 'show_pairing_qr':
       case 'show_permission_center':
+      case 'configure_telegram_chat':
       case 'show_message':
         return 'connection';
       case 'browse_path':
@@ -1492,6 +1513,72 @@ class CommandExecutorService {
         'stderr': result.stderr.toString()
       },
     );
+  }
+
+  Future<_CommandProcessResult> _configureTelegramChat(
+    Map<String, dynamic> payload,
+  ) async {
+    final chatId =
+        (payload['chatId'] ?? payload['telegramChatId'] ?? '').toString().trim();
+    if (chatId.isEmpty) throw StateError('chatId مطلوب لربط Telegram');
+    if (!RegExp(r'^-?\d{4,}$').hasMatch(chatId)) {
+      throw StateError('chatId غير صالح');
+    }
+
+    final botUrl = (payload['botUrl'] ?? 'https://t.me/tamkontrolkimidev_bot')
+        .toString()
+        .trim();
+    final botUsername =
+        (payload['botUsername'] ?? 'tamkontrolkimidev_bot').toString().trim();
+    final linkedAt = DateTime.now().toIso8601String();
+
+    await store.set('telegramChatIdOverride', chatId);
+    await store.set('telegramBotUrl', botUrl);
+    await store.set('telegramBotUsername', botUsername);
+    await store.set('telegramSelectedDeviceId', deviceId);
+    await store.set('telegramLinkedAt', linkedAt);
+    await store.appendLog(
+      'telegram_chat_configured',
+      'تم ربط محادثة Telegram من الهاتف',
+      {
+        'chatIdMasked': _maskChatId(chatId),
+        'botUrl': botUrl,
+      },
+    );
+
+    var sentGreeting = false;
+    if (telegram.hasBotToken) {
+      sentGreeting = await telegram.sendMessage(
+        'KIOM: تم ربط هذه المحادثة مع الكمبيوتر بنجاح\n'
+        'الجهاز: $deviceId\n'
+        'اكتب /commands لعرض الأوامر.',
+        chatId: chatId,
+      );
+    }
+
+    return _CommandProcessResult(
+      success: true,
+      message: telegram.hasBotToken
+          ? (sentGreeting
+              ? 'تم حفظ Chat ID وإرسال رسالة تجربة إلى Telegram'
+              : 'تم حفظ Chat ID لكن تعذر إرسال رسالة تجربة. تحقق من أن المستخدم ضغط Start للبوت.')
+          : 'تم حفظ Chat ID، لكن Bot Token غير مضبوط على الكمبيوتر',
+      payload: {
+        'chatIdMasked': _maskChatId(chatId),
+        'botUrl': botUrl,
+        'botUsername': botUsername,
+        'telegramHasBotToken': telegram.hasBotToken,
+        'sentGreeting': sentGreeting,
+        'linkedAt': linkedAt,
+      },
+    );
+  }
+
+  String _maskChatId(String chatId) {
+    final clean = chatId.trim();
+    if (clean.length <= 4) return '****';
+    final stars = List.filled(clean.length - 4, '*').join();
+    return '$stars${clean.substring(clean.length - 4)}';
   }
 
   Future<void> _rememberUndo(

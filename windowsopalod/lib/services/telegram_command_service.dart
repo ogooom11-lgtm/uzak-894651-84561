@@ -25,9 +25,9 @@ class TelegramCommandService {
   bool _polling = false;
 
   void start() {
-    if (!telegram.isConfigured) {
+    if (!telegram.hasBotToken) {
       unawaited(store.appendLog('telegram_command_start_skipped',
-          'لم يبدأ مستقبل أوامر Telegram لأن bot token أو chat id غير مضبوط'));
+          'لم يبدأ مستقبل أوامر Telegram لأن bot token غير مضبوط'));
       return;
     }
     _timer?.cancel();
@@ -79,13 +79,23 @@ class TelegramCommandService {
 
     final chat = (message['chat'] as Map?)?.cast<String, dynamic>();
     final chatId = (chat?['id'] ?? '').toString();
-    if (chatId.isEmpty || chatId != telegram.config.telegramChatId.trim()) {
-      return;
-    }
+    if (chatId.isEmpty) return;
 
     final text = (message['text'] ?? '').toString().trim();
     if (text.isEmpty) return;
     final messageId = (message['message_id'] as num?)?.toInt();
+    final allowedChatId = telegram.effectiveChatId;
+    if (allowedChatId.isEmpty) {
+      await telegram.sendMessage(
+        'Chat ID الخاص بهذه المحادثة هو:\n$chatId\n\nانسخه والصقه في تطبيق الهاتف لإكمال ربط Telegram مع الكمبيوتر.',
+        chatId: chatId,
+        replyToMessageId: messageId,
+      );
+      return;
+    }
+    if (chatId != allowedChatId) {
+      return;
+    }
 
     final handled = await _handleControlCommand(
       text,
@@ -108,7 +118,10 @@ class TelegramCommandService {
     final chat = (message?['chat'] as Map?)?.cast<String, dynamic>();
     final chatId = (chat?['id'] ?? '').toString();
     final messageId = (message?['message_id'] as num?)?.toInt();
-    if (chatId.isEmpty || chatId != telegram.config.telegramChatId.trim()) return;
+    final allowedChatId = telegram.effectiveChatId;
+    if (chatId.isEmpty || allowedChatId.isEmpty || chatId != allowedChatId) {
+      return;
+    }
 
     await telegram.answerCallbackQuery(id, text: 'تم الاستلام');
     if (data == 'menu') {

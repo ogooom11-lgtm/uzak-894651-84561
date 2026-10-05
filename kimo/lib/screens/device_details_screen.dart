@@ -25,6 +25,7 @@ import 'protection_screen.dart';
 import 'scheduler_screen.dart';
 import 'screenshots_screen.dart';
 import 'smart_insights_screen.dart';
+import 'telegram_setup_screen.dart';
 import 'volume_screen.dart';
 import 'wifi_screen.dart';
 
@@ -294,6 +295,19 @@ class DeviceDetailsScreen extends StatelessWidget {
               onTap: () => _open(
                 context,
                 OperationMessagesScreen(userId: userId, device: device),
+              ),
+            ),
+            ActionTile(
+              title: 'ربط Telegram',
+              subtitle: 'افتح البوت واكتب Chat ID ليصل للكمبيوتر مباشرة',
+              icon: Icons.send_rounded,
+              onTap: () => _open(
+                context,
+                TelegramSetupScreen(
+                  userId: userId,
+                  deviceId: device.id,
+                  device: device,
+                ),
               ),
             ),
             ActionTile(

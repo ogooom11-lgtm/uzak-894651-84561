@@ -1,9 +1,12 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:provider/provider.dart';
 
 import '../repositories/device_repository.dart';
 import '../widgets/app_snack.dart';
+import 'telegram_setup_screen.dart';
 
 class PairingScreen extends StatefulWidget {
   const PairingScreen({super.key, required this.userId});
@@ -31,13 +34,33 @@ class _PairingScreenState extends State<PairingScreen> {
     if (_scanned) return;
     setState(() => _scanned = true);
     try {
+      final decoded = jsonDecode(payload);
+      final data = decoded is Map ? decoded.cast<String, dynamic>() : null;
+      final deviceId = (data?['deviceId'] ?? '').toString();
+      final deviceName =
+          (data?['name'] ?? data?['deviceName'] ?? deviceId).toString();
+
       await context.read<DeviceRepository>().pairDeviceByQrPayload(
             userId: widget.userId,
             qrPayload: payload,
           );
       if (!mounted) return;
       showAppSnack(context, 'تم ربط الجهاز بنجاح.');
-      Navigator.pop(context);
+      if (deviceId.isEmpty) {
+        Navigator.pop(context);
+        return;
+      }
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => TelegramSetupScreen(
+            userId: widget.userId,
+            deviceId: deviceId,
+            deviceName: deviceName,
+            afterPairing: true,
+          ),
+        ),
+      );
     } catch (e) {
       if (!mounted) return;
       setState(() => _scanned = false);
