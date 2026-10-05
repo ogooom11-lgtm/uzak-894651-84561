@@ -1,0 +1,70 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function ownsDevice(deviceId) {
+      return signedIn()
+        && exists(/databases/$(database)/documents/devices/$(deviceId))
+        && request.auth.uid in get(/databases/$(database)/documents/devices/$(deviceId)).data.linkedUserIds;
+    }
+
+    match /devices/{deviceId} {
+      allow read: if ownsDevice(deviceId);
+      allow create, update: if signedIn();
+    }
+
+    match /users/{userId}/{document=**} {
+      allow read, write: if signedIn() && request.auth.uid == userId;
+    }
+
+    match /commands/{deviceId}/items/{commandId} {
+      allow read, write: if ownsDevice(deviceId);
+    }
+
+    match /responses/{deviceId}/items/{responseId} {
+      allow read: if ownsDevice(deviceId);
+      allow write: if ownsDevice(deviceId);
+    }
+
+    match /open_apps/{deviceId}/items/{appId} {
+      allow read: if ownsDevice(deviceId);
+      allow write: if ownsDevice(deviceId);
+    }
+
+    match /permission_requests/{deviceId}/items/{requestId} {
+      allow read, write: if ownsDevice(deviceId);
+    }
+
+    match /install_requests/{deviceId}/items/{requestId} {
+      allow read, write: if ownsDevice(deviceId);
+    }
+
+    match /screenshots/{deviceId}/items/{shotId} {
+      allow read, write: if ownsDevice(deviceId);
+    }
+
+    match /requested_logs/{deviceId}/items/{logId} {
+      allow read, write: if ownsDevice(deviceId);
+    }
+
+    match /installed_apps/{deviceId}/items/{appId} {
+      allow read, write: if ownsDevice(deviceId);
+    }
+
+    match /blocked_items/{deviceId}/items/{itemId} {
+      allow read, write: if ownsDevice(deviceId);
+    }
+
+    match /path_rules/{deviceId}/items/{ruleId} {
+      allow read, write: if ownsDevice(deviceId);
+    }
+
+    match /pairing_tokens/{tokenId} {
+      allow read: if signedIn();
+      allow write: if signedIn();
+    }
+  }
+}
