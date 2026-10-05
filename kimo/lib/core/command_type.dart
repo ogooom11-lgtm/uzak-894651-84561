@@ -13,6 +13,7 @@ enum CommandType {
   applyPresetMode,
   systemHealth,
   privacyMode,
+  undoLastCommand,
   wifiOn,
   wifiOff,
   internetOffPermanent,
@@ -90,6 +91,8 @@ extension CommandTypeX on CommandType {
         return 'system_health';
       case CommandType.privacyMode:
         return 'privacy_mode';
+      case CommandType.undoLastCommand:
+        return 'undo_last_command';
       case CommandType.wifiOn:
         return 'wifi_on';
       case CommandType.wifiOff:
@@ -211,6 +214,8 @@ extension CommandTypeX on CommandType {
         return 'صحة الجهاز';
       case CommandType.privacyMode:
         return 'وضع الخصوصية';
+      case CommandType.undoLastCommand:
+        return 'التراجع عن آخر أمر';
       case CommandType.wifiOn:
         return 'تشغيل WiFi';
       case CommandType.wifiOff:

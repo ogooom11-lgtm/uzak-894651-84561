@@ -137,6 +137,7 @@ CREATE TABLE IF NOT EXISTS command_history (
     _data.putIfAbsent('device', () => null);
     _data.putIfAbsent('pathRules', () => <dynamic>[]);
     _data.putIfAbsent('commandHistory', () => <dynamic>[]);
+    _data.putIfAbsent('undoStack', () => <dynamic>[]);
     _data.putIfAbsent('scheduledCommands', () => <dynamic>[]);
     _data.putIfAbsent('logs', () => <dynamic>[]);
   }

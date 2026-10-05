@@ -721,6 +721,13 @@ class CommandExecutorService {
             });
             break;
 
+          case 'undo_last_command':
+            final result = await _undoLastCommand();
+            success = result.success;
+            message = result.message;
+            responsePayload = result.payload;
+            break;
+
           case 'browse_path':
             final path = (command.payload['path'] ?? 'roots').toString();
             responsePayload = await fileManager.listPath(path);
@@ -860,6 +867,9 @@ class CommandExecutorService {
       'success': success,
       'payload': responsePayload,
     });
+    if (success) {
+      await _rememberUndo(command, responsePayload);
+    }
 
     try {
       await _writeResponse(command, success, message, responsePayload,
@@ -949,6 +959,13 @@ class CommandExecutorService {
             final result = await _applyPrivacyMode(
               command.payload['enabled'] != false,
             );
+            success = result.success;
+            message = result.message;
+            responsePayload = result.payload;
+            break;
+
+          case 'undo_last_command':
+            final result = await _undoLastCommand();
             success = result.success;
             message = result.message;
             responsePayload = result.payload;
@@ -1236,6 +1253,9 @@ class CommandExecutorService {
       'success': success,
       'payload': responsePayload,
     });
+    if (success) {
+      await _rememberUndo(command, responsePayload);
+    }
 
     return CommandExecutionResult(
       success: success,
@@ -1393,6 +1413,7 @@ class CommandExecutorService {
         return 'closeApplication';
       case 'system_health':
       case 'privacy_mode':
+      case 'undo_last_command':
         return 'connection';
       case 'approve_install':
       case 'reject_install':
@@ -1470,6 +1491,187 @@ class CommandExecutorService {
         'stdout': result.stdout.toString(),
         'stderr': result.stderr.toString()
       },
+    );
+  }
+
+  Future<void> _rememberUndo(
+    RemoteCommand command,
+    Map<String, dynamic> responsePayload,
+  ) async {
+    if (command.type == 'undo_last_command') return;
+
+    Map<String, dynamic>? undo;
+    final payload = command.payload;
+    switch (command.type) {
+      case 'block_application':
+        final target = (responsePayload['target'] ??
+                payload['target'] ??
+                payload['appName'] ??
+                '')
+            .toString();
+        if (target.isNotEmpty) undo = {'action': 'allow_app', 'target': target};
+        break;
+      case 'block_website':
+        final target =
+            (responsePayload['target'] ?? payload['domain'] ?? payload['target'] ?? '')
+                .toString();
+        if (target.isNotEmpty) undo = {'action': 'allow_site', 'target': target};
+        break;
+      case 'apply_preset_mode':
+        undo = {
+          'action': 'clear_preset',
+          'sites': responsePayload['blockedSites'] ?? const [],
+          'apps': responsePayload['blockedApps'] ?? const [],
+        };
+        break;
+      case 'privacy_mode':
+        final enabled = responsePayload['enabled'] == true;
+        undo = {'action': 'privacy_mode', 'enabled': !enabled};
+        break;
+      case 'wifi_on':
+        undo = {'action': 'set_wifi', 'enabled': false};
+        break;
+      case 'wifi_off':
+        undo = {'action': 'set_wifi', 'enabled': true};
+        break;
+      case 'internet_on':
+        undo = {'action': 'set_internet', 'enabled': false};
+        break;
+      case 'internet_off_permanent':
+        undo = {'action': 'set_internet', 'enabled': true};
+        break;
+      case 'bluetooth_on':
+        undo = {'action': 'set_bluetooth', 'enabled': false};
+        break;
+      case 'bluetooth_off':
+        undo = {'action': 'set_bluetooth', 'enabled': true};
+        break;
+      case 'mute_volume':
+        undo = {'action': 'set_muted', 'muted': false};
+        break;
+      case 'unmute_volume':
+        undo = {'action': 'set_muted', 'muted': true};
+        break;
+      case 'hide_path':
+        final path = (payload['path'] ?? '').toString();
+        if (path.isNotEmpty) undo = {'action': 'set_hidden', 'path': path, 'hidden': false};
+        break;
+      case 'unhide_path':
+        final path = (payload['path'] ?? '').toString();
+        if (path.isNotEmpty) undo = {'action': 'set_hidden', 'path': path, 'hidden': true};
+        break;
+    }
+    if (undo == null) return;
+
+    final stack = store.list('undoStack');
+    stack.add({
+      ...undo,
+      'commandId': command.id,
+      'commandType': command.type,
+      'createdAt': DateTime.now().toIso8601String(),
+    });
+    if (stack.length > 20) {
+      stack.removeRange(0, stack.length - 20);
+    }
+    await store.save();
+  }
+
+  Future<_CommandProcessResult> _undoLastCommand() async {
+    final stack = store.list('undoStack');
+    while (stack.isNotEmpty) {
+      final raw = stack.removeLast();
+      await store.save();
+      if (raw is! Map) continue;
+      final item = raw.cast<String, dynamic>();
+      final action = (item['action'] ?? '').toString();
+      switch (action) {
+        case 'allow_app':
+          final target = (item['target'] ?? '').toString();
+          if (target.isEmpty) continue;
+          await appBlocker.allowApp(target);
+          await _syncBlockedItemsBestEffort();
+          return _CommandProcessResult(
+            success: true,
+            message: 'تم التراجع: إلغاء منع التطبيق $target',
+            payload: {'action': action, 'target': target},
+          );
+        case 'allow_site':
+          final target = (item['target'] ?? '').toString();
+          if (target.isEmpty) continue;
+          await appBlocker.allowSite(target);
+          await _syncBlockedItemsBestEffort();
+          return _CommandProcessResult(
+            success: true,
+            message: 'تم التراجع: إلغاء منع الموقع $target',
+            payload: {'action': action, 'target': target},
+          );
+        case 'clear_preset':
+          final sites = (item['sites'] as List?) ?? const [];
+          final apps = (item['apps'] as List?) ?? const [];
+          for (final site in sites) {
+            final value = site.toString();
+            if (value.isNotEmpty) await appBlocker.allowSite(value);
+          }
+          for (final app in apps) {
+            final value = app.toString();
+            if (value.isNotEmpty) await appBlocker.allowApp(value);
+          }
+          await _syncBlockedItemsBestEffort();
+          return _CommandProcessResult(
+            success: true,
+            message: 'تم التراجع عن الوضع الجاهز وإزالة قيوده',
+            payload: {'action': action, 'sites': sites.length, 'apps': apps.length},
+          );
+        case 'privacy_mode':
+          return _applyPrivacyMode(item['enabled'] == true);
+        case 'set_wifi':
+          final result = await windowsControl.setWifi(item['enabled'] == true);
+          return _CommandProcessResult(
+            success: result.success,
+            message: 'تم التراجع: ${result.message}',
+            payload: result.payload,
+          );
+        case 'set_internet':
+          final result = await windowsControl.setInternetAdapters(
+            item['enabled'] == true,
+          );
+          return _CommandProcessResult(
+            success: result.success,
+            message: 'تم التراجع: ${result.message}',
+            payload: result.payload,
+          );
+        case 'set_bluetooth':
+          final result = await windowsControl.setBluetooth(item['enabled'] == true);
+          return _CommandProcessResult(
+            success: result.success,
+            message: 'تم التراجع: ${result.message}',
+            payload: result.payload,
+          );
+        case 'set_muted':
+          final result = await windowsControl.setMuted(item['muted'] == true);
+          return _CommandProcessResult(
+            success: result.success,
+            message: 'تم التراجع: ${result.message}',
+            payload: result.payload,
+          );
+        case 'set_hidden':
+          final path = (item['path'] ?? '').toString();
+          if (path.isEmpty) continue;
+          final payload = await fileManager.setHidden(path, item['hidden'] == true);
+          return _CommandProcessResult(
+            success: true,
+            message: item['hidden'] == true
+                ? 'تم التراجع: إخفاء المسار مرة أخرى'
+                : 'تم التراجع: إظهار المسار مرة أخرى',
+            payload: payload,
+          );
+      }
+    }
+
+    return _CommandProcessResult(
+      success: false,
+      message: 'لا يوجد أمر قابل للتراجع حالياً',
+      payload: {'undoStackEmpty': true},
     );
   }
 

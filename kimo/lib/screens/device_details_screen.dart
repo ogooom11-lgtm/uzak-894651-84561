@@ -178,6 +178,16 @@ class DeviceDetailsScreen extends StatelessWidget {
                     HealthScreen(userId: userId, device: device),
                   ),
                 ),
+                _QuickAction(
+                  title: 'تراجع',
+                  icon: Icons.undo_rounded,
+                  color: const Color(0xFF7C3AED),
+                  onTap: () => _sendCommand(
+                    context,
+                    CommandType.undoLastCommand,
+                    'تم إرسال طلب التراجع عن آخر أمر قابل للتراجع.',
+                  ),
+                ),
               ],
             ),
             const SizedBox(height: 18),

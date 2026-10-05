@@ -275,6 +275,9 @@ class TelegramCommandService {
         lower == 'خصوصية إيقاف') {
       return const _ParsedTelegramCommand('privacy_mode', {'enabled': false});
     }
+    if (lower == 'undo' || lower == 'تراجع' || lower == 'الغاء اخر امر') {
+      return const _ParsedTelegramCommand('undo_last_command');
+    }
     if (lower.startsWith('mode ') || lower.startsWith('وضع ')) {
       final mode = lower.startsWith('mode ')
           ? normalized.substring('mode '.length).trim()
@@ -501,7 +504,7 @@ class TelegramCommandService {
         'أوامر سريعة:\n'
         'status, screenshot, health, emergency, logs\n'
         'mode study, mode work, mode kids, mode protection\n'
-        'privacy on, privacy off\n'
+        'privacy on, privacy off, undo\n'
         'lock, lock 30, unlock\n'
         'shutdown, restart, logout\n'
         'volume 0/25/50/75/100, volup, voldown, mute, unmute\n'
@@ -540,6 +543,8 @@ class TelegramCommandService {
         return 'privacy on';
       case 'privacy_off':
         return 'privacy off';
+      case 'undo':
+        return 'undo';
       default:
         return data;
     }
@@ -566,7 +571,7 @@ class TelegramCommandService {
         [button('دراسة', 'mode_study'), button('عمل', 'mode_work')],
         [button('أطفال', 'mode_kids'), button('حماية قصوى', 'mode_protection')],
         [button('خصوصية تشغيل', 'privacy_on'), button('خصوصية إيقاف', 'privacy_off')],
-        [button('السجلات', 'logs'), button('مساعدة', 'menu')],
+        [button('تراجع', 'undo'), button('السجلات', 'logs'), button('مساعدة', 'menu')],
       ],
     };
   }
@@ -580,7 +585,7 @@ class TelegramCommandService {
         [button('status'), button('screenshot'), button('health')],
         [button('emergency'), button('mode study'), button('mode work')],
         [button('mode kids'), button('mode protection'), button('logs')],
-        [button('privacy on'), button('privacy off')],
+        [button('privacy on'), button('privacy off'), button('undo')],
         [button('lock'), button('lock 30'), button('unlock')],
         [button('volume 25'), button('volume 50'), button('mute')],
         [button('volup'), button('voldown'), button('unmute')],
