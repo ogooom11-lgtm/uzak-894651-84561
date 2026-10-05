@@ -11,10 +11,12 @@ import '../widgets/status_chip.dart';
 import 'blocked_items_screen.dart';
 import 'bluetooth_screen.dart';
 import 'file_manager_screen.dart';
+import 'health_screen.dart';
 import 'install_requests_screen.dart';
 import 'installed_apps_screen.dart';
 import 'logs_screen.dart';
 import 'open_apps_screen.dart';
+import 'modes_screen.dart';
 import 'operation_messages_screen.dart';
 import 'permission_requests_screen.dart';
 import 'power_screen.dart';
@@ -154,6 +156,24 @@ class DeviceDetailsScreen extends StatelessWidget {
                   icon: Icons.chat_bubble_rounded,
                   color: const Color(0xFF16A34A),
                   onTap: () => _sendMessageToComputer(context),
+                ),
+                _QuickAction(
+                  title: 'الأوضاع',
+                  icon: Icons.auto_awesome_rounded,
+                  color: const Color(0xFFF59E0B),
+                  onTap: () => _open(
+                    context,
+                    ModesScreen(userId: userId, device: device),
+                  ),
+                ),
+                _QuickAction(
+                  title: 'الصحة',
+                  icon: Icons.monitor_heart_rounded,
+                  color: const Color(0xFF06B6D4),
+                  onTap: () => _open(
+                    context,
+                    HealthScreen(userId: userId, device: device),
+                  ),
                 ),
               ],
             ),

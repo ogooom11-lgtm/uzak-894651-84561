@@ -307,6 +307,69 @@ Start-Process fsquirt.exe -ArgumentList '-send'
     );
   }
 
+  Future<WindowsControlResult> systemHealth() async {
+    final result = await _runPowerShell(r'''
+$ErrorActionPreference = 'SilentlyContinue'
+$os = Get-CimInstance Win32_OperatingSystem
+$cpu = Get-CimInstance Win32_Processor | Select-Object -First 1
+$disks = Get-CimInstance Win32_LogicalDisk -Filter "DriveType=3" | ForEach-Object {
+  [PSCustomObject]@{
+    name = $_.DeviceID
+    label = $_.VolumeName
+    totalBytes = [Int64]$_.Size
+    freeBytes = [Int64]$_.FreeSpace
+    usedPercent = if ($_.Size) { [Math]::Round((($_.Size - $_.FreeSpace) / $_.Size) * 100, 1) } else { 0 }
+  }
+}
+$battery = Get-CimInstance Win32_Battery | Select-Object -First 1
+$batteryInfo = $null
+if ($battery) {
+  $batteryInfo = [PSCustomObject]@{
+    percent = [int]$battery.EstimatedChargeRemaining
+    status = [int]$battery.BatteryStatus
+  }
+}
+$uptime = if ($os.LastBootUpTime) { [int]((Get-Date) - $os.LastBootUpTime).TotalMinutes } else { 0 }
+$totalMemory = [Int64]$os.TotalVisibleMemorySize * 1024
+$freeMemory = [Int64]$os.FreePhysicalMemory * 1024
+$usedMemory = $totalMemory - $freeMemory
+$memoryUsedPercent = if ($totalMemory) { [Math]::Round(($usedMemory / $totalMemory) * 100, 1) } else { 0 }
+[PSCustomObject]@{
+  computerName = $env:COMPUTERNAME
+  windowsUser = $env:USERNAME
+  os = $os.Caption
+  uptimeMinutes = $uptime
+  cpuLoadPercent = [int]($cpu.LoadPercentage)
+  memory = [PSCustomObject]@{
+    totalBytes = $totalMemory
+    freeBytes = $freeMemory
+    usedBytes = $usedMemory
+    usedPercent = $memoryUsedPercent
+  }
+  battery = $batteryInfo
+  disks = @($disks)
+  checkedAt = (Get-Date).ToString('o')
+} | ConvertTo-Json -Compress -Depth 5
+''');
+
+    final payload = _payload(result);
+    final text = result.stdout.toString().trim();
+    if (text.startsWith('{')) {
+      try {
+        final decoded = jsonDecode(text);
+        if (decoded is Map) payload.addAll(decoded.cast<String, dynamic>());
+      } catch (_) {}
+    }
+
+    return WindowsControlResult(
+      success: result.exitCode == 0,
+      message: result.exitCode == 0
+          ? 'تم جلب صحة الجهاز'
+          : 'تعذر جلب صحة الجهاز: ${_clean(result)}',
+      payload: payload,
+    );
+  }
+
   Future<WindowsControlResult> power(String action) async {
     late final ProcessResult result;
     switch (action) {

@@ -9,6 +9,9 @@ enum CommandType {
   showPairingQr,
   showPermissionCenter,
   requestScreenshot,
+  emergencyMode,
+  applyPresetMode,
+  systemHealth,
   wifiOn,
   wifiOff,
   internetOffPermanent,
@@ -78,6 +81,12 @@ extension CommandTypeX on CommandType {
         return 'show_permission_center';
       case CommandType.requestScreenshot:
         return 'request_screenshot';
+      case CommandType.emergencyMode:
+        return 'emergency_mode';
+      case CommandType.applyPresetMode:
+        return 'apply_preset_mode';
+      case CommandType.systemHealth:
+        return 'system_health';
       case CommandType.wifiOn:
         return 'wifi_on';
       case CommandType.wifiOff:
@@ -191,6 +200,12 @@ extension CommandTypeX on CommandType {
         return 'فتح أذونات الكمبيوتر';
       case CommandType.requestScreenshot:
         return 'طلب لقطة شاشة';
+      case CommandType.emergencyMode:
+        return 'وضع الطوارئ';
+      case CommandType.applyPresetMode:
+        return 'تفعيل وضع جاهز';
+      case CommandType.systemHealth:
+        return 'صحة الجهاز';
       case CommandType.wifiOn:
         return 'تشغيل WiFi';
       case CommandType.wifiOff:

@@ -217,6 +217,18 @@ class TelegramCommandService {
         lower == 'صورة الشاشة') {
       return const _ParsedTelegramCommand('request_screenshot');
     }
+    if (lower == 'emergency' || lower == 'طوارئ' || lower == 'وضع الطوارئ') {
+      return const _ParsedTelegramCommand('emergency_mode');
+    }
+    if (lower == 'health' || lower == 'صحة' || lower == 'صحة الجهاز') {
+      return const _ParsedTelegramCommand('system_health');
+    }
+    if (lower.startsWith('mode ') || lower.startsWith('وضع ')) {
+      final mode = lower.startsWith('mode ')
+          ? normalized.substring('mode '.length).trim()
+          : normalized.substring('وضع '.length).trim();
+      return _ParsedTelegramCommand('apply_preset_mode', {'mode': mode});
+    }
     if (first == 'lock' || first == 'قفل') {
       final minutes = int.tryParse(rest);
       return _ParsedTelegramCommand(
@@ -435,7 +447,8 @@ class TelegramCommandService {
         'اختيار جهاز: /use $deviceId\n'
         'إظهار لوحة الأوامر: /commands\n'
         'أوامر سريعة:\n'
-        'status, screenshot, logs\n'
+        'status, screenshot, health, emergency, logs\n'
+        'mode study, mode work, mode kids, mode protection\n'
         'lock, lock 30, unlock\n'
         'shutdown, restart, logout\n'
         'volume 0/25/50/75/100, volup, voldown, mute, unmute\n'
@@ -456,7 +469,9 @@ class TelegramCommandService {
     return {
       'keyboard': [
         [button('/devices'), button('/use $deviceId'), button('/who')],
-        [button('status'), button('screenshot'), button('logs')],
+        [button('status'), button('screenshot'), button('health')],
+        [button('emergency'), button('mode study'), button('mode work')],
+        [button('mode kids'), button('mode protection'), button('logs')],
         [button('lock'), button('lock 30'), button('unlock')],
         [button('volume 25'), button('volume 50'), button('mute')],
         [button('volup'), button('voldown'), button('unmute')],

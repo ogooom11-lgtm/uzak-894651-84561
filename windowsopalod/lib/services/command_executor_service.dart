@@ -675,6 +675,35 @@ class CommandExecutorService {
             responsePayload = result.toMap();
             break;
 
+          case 'emergency_mode':
+            final result = await _runEmergencyMode();
+            success = result.success;
+            message = result.message;
+            responsePayload = result.payload;
+            break;
+
+          case 'apply_preset_mode':
+            final result = await _applyPresetMode(
+              (command.payload['mode'] ?? 'study').toString(),
+            );
+            success = result.success;
+            message = result.message;
+            responsePayload = result.payload;
+            break;
+
+          case 'system_health':
+            final result = await windowsControl.systemHealth();
+            success = result.success;
+            message = result.message;
+            responsePayload = result.payload;
+            if (success) {
+              await firestore.setDocument('devices/$deviceId', {
+                'lastHealth': responsePayload,
+                'lastHealthCheckedAt': DateTime.now().toIso8601String(),
+              });
+            }
+            break;
+
           case 'browse_path':
             final path = (command.payload['path'] ?? 'roots').toString();
             responsePayload = await fileManager.listPath(path);
@@ -871,6 +900,29 @@ class CommandExecutorService {
                 ? 'تم التقاط الشاشة وإرسالها هنا'
                 : 'تم التقاط الشاشة محلياً: ${result.localPath}';
             responsePayload = result.toMap();
+            break;
+
+          case 'emergency_mode':
+            final result = await _runEmergencyMode();
+            success = result.success;
+            message = result.message;
+            responsePayload = result.payload;
+            break;
+
+          case 'apply_preset_mode':
+            final result = await _applyPresetMode(
+              (command.payload['mode'] ?? 'study').toString(),
+            );
+            success = result.success;
+            message = result.message;
+            responsePayload = result.payload;
+            break;
+
+          case 'system_health':
+            final result = await windowsControl.systemHealth();
+            success = result.success;
+            message = result.message;
+            responsePayload = result.payload;
             break;
 
           case 'lock_screen':
@@ -1283,6 +1335,12 @@ class CommandExecutorService {
         return 'volumeControl';
       case 'request_screenshot':
         return 'screenshots';
+      case 'emergency_mode':
+        return 'lockScreen';
+      case 'apply_preset_mode':
+        return 'closeApplication';
+      case 'system_health':
+        return 'connection';
       case 'approve_install':
       case 'reject_install':
         return 'installProtection';
@@ -1358,6 +1416,106 @@ class CommandExecutorService {
         'target': normalized,
         'stdout': result.stdout.toString(),
         'stderr': result.stderr.toString()
+      },
+    );
+  }
+
+  Future<_CommandProcessResult> _runEmergencyMode() async {
+    final payload = <String, dynamic>{
+      'startedAt': DateTime.now().toIso8601String(),
+    };
+    await store.appendLog('emergency_mode_started', 'تم تفعيل وضع الطوارئ');
+    await telegram.sendMessage(
+      'KIOM: تم تفعيل وضع الطوارئ\nالجهاز: $deviceId',
+    );
+
+    try {
+      final shot = await screenshotService.captureAndSend(deviceName: deviceId);
+      payload['screenshot'] = shot.toMap();
+    } catch (e) {
+      payload['screenshotError'] = e.toString();
+    }
+
+    if (config.enableWifiBluetoothCommands) {
+      payload['internetScheduled'] = true;
+      unawaited(Future<void>.delayed(const Duration(seconds: 8), () async {
+        final net = await windowsControl.setInternetAdapters(false);
+        await store.appendLog('emergency_internet_cut', net.message, net.payload);
+      }));
+    } else {
+      payload['internetSkipped'] = 'أوامر الشبكة مقفلة من config';
+    }
+
+    await desktopLock.lockNow(reason: 'emergency_mode');
+    payload['lockedAt'] = DateTime.now().toIso8601String();
+    return _CommandProcessResult(
+      success: true,
+      message: 'تم تنفيذ وضع الطوارئ: لقطة شاشة، تنبيه Telegram، وقفل الكمبيوتر',
+      payload: payload,
+    );
+  }
+
+  Future<_CommandProcessResult> _applyPresetMode(String mode) async {
+    final normalized = mode.trim().toLowerCase();
+    final sites = <String>[];
+    final apps = <String>[];
+    var label = 'وضع مخصص';
+
+    switch (normalized) {
+      case 'study':
+      case 'school':
+        label = 'وضع الدراسة';
+        sites.addAll(['youtube.com', 'tiktok.com', 'instagram.com', 'facebook.com']);
+        apps.addAll(['steam.exe', 'discord.exe']);
+        break;
+      case 'work':
+      case 'focus':
+        label = 'وضع العمل والتركيز';
+        sites.addAll(['tiktok.com', 'instagram.com', 'facebook.com', 'x.com']);
+        apps.addAll(['steam.exe', 'epicgameslauncher.exe']);
+        break;
+      case 'kids':
+        label = 'وضع الأطفال';
+        sites.addAll(['youtube.com', 'tiktok.com', 'instagram.com', 'facebook.com']);
+        apps.addAll(['steam.exe', 'discord.exe', 'telegram.exe']);
+        break;
+      case 'protection':
+      case 'secure':
+        label = 'وضع الحماية القصوى';
+        sites.addAll(['youtube.com', 'tiktok.com', 'instagram.com', 'facebook.com', 'x.com']);
+        apps.addAll(['steam.exe', 'discord.exe', 'epicgameslauncher.exe']);
+        break;
+      default:
+        label = 'وضع $mode';
+        break;
+    }
+
+    for (final site in sites) {
+      await appBlocker.blockSite(site);
+    }
+    for (final app in apps) {
+      await appBlocker.blockApp(target: app, appName: app);
+    }
+    await _syncBlockedItemsBestEffort();
+    await store.set('activePresetMode', {
+      'mode': normalized,
+      'label': label,
+      'sites': sites,
+      'apps': apps,
+      'activatedAt': DateTime.now().toIso8601String(),
+    });
+    await telegram.sendMessage(
+      'KIOM: تم تفعيل $label\nالمواقع: ${sites.length}\nالتطبيقات: ${apps.length}\nالجهاز: $deviceId',
+    );
+
+    return _CommandProcessResult(
+      success: true,
+      message: 'تم تفعيل $label',
+      payload: {
+        'mode': normalized,
+        'label': label,
+        'blockedSites': sites,
+        'blockedApps': apps,
       },
     );
   }
