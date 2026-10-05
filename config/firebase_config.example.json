@@ -1,0 +1,22 @@
+{
+  "projectId": "PUT_YOUR_FIREBASE_PROJECT_ID_HERE",
+  "apiKey": "PUT_YOUR_FIREBASE_WEB_API_KEY_HERE",
+  "databaseId": "(default)",
+  "demoUserId": "local_demo_user",
+  "appVersion": "0.1.0",
+  "pollCommandsEverySeconds": 3,
+  "syncOpenAppsEverySeconds": 8,
+  "scanExplorerEverySeconds": 2,
+  "autoCreatePairingToken": true,
+  "deleteCommandsAfterExecution": false,
+  "enableStartupRegistrationFromCode": true,
+  "enableDangerousPowerCommands": true,
+  "enableWifiBluetoothCommands": true,
+  "defaultPasswordAllowMinutes": 10,
+  "googleDriveClientId": "PUT_GOOGLE_OAUTH_CLIENT_ID_HERE",
+  "googleDriveClientSecret": "PUT_GOOGLE_OAUTH_CLIENT_SECRET_HERE",
+  "googleDriveRefreshToken": "PUT_GOOGLE_OAUTH_REFRESH_TOKEN_HERE",
+  "googleDriveFolderId": "PUT_GOOGLE_DRIVE_FOLDER_ID_HERE",
+  "telegramBotToken": "123456789:PUT_TELEGRAM_BOT_TOKEN_HERE",
+  "telegramChatId": "PUT_TELEGRAM_CHAT_ID_HERE"
+}
