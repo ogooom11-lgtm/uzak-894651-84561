@@ -17,11 +17,14 @@ import 'installed_apps_screen.dart';
 import 'logs_screen.dart';
 import 'open_apps_screen.dart';
 import 'modes_screen.dart';
+import 'notifications_screen.dart';
 import 'operation_messages_screen.dart';
 import 'permission_requests_screen.dart';
 import 'power_screen.dart';
 import 'protection_screen.dart';
+import 'scheduler_screen.dart';
 import 'screenshots_screen.dart';
+import 'smart_insights_screen.dart';
 import 'volume_screen.dart';
 import 'wifi_screen.dart';
 
@@ -224,6 +227,15 @@ class DeviceDetailsScreen extends StatelessWidget {
               subtitle: 'الشبكة، البلوتوث، الصوت والطاقة.',
             ),
             ActionTile(
+              title: 'جدولة الأوامر',
+              subtitle: 'نفّذ أوامر لاحقاً بتاريخ ووقت تختاره',
+              icon: Icons.event_available_rounded,
+              onTap: () => _open(
+                context,
+                SchedulerScreen(userId: userId, device: device),
+              ),
+            ),
+            ActionTile(
               title: 'WiFi والإنترنت',
               subtitle: 'تشغيل/إيقاف WiFi أو تعطيل الإنترنت بالكامل',
               icon: Icons.wifi_rounded,
@@ -272,6 +284,24 @@ class DeviceDetailsScreen extends StatelessWidget {
               onTap: () => _open(
                 context,
                 OperationMessagesScreen(userId: userId, device: device),
+              ),
+            ),
+            ActionTile(
+              title: 'الإشعارات',
+              subtitle: 'تنبيهات فورية داخل التطبيق للأوامر والأحداث المهمة',
+              icon: Icons.notifications_active_rounded,
+              onTap: () => _open(
+                context,
+                NotificationsScreen(device: device),
+              ),
+            ),
+            ActionTile(
+              title: 'السجلات الذكية',
+              subtitle: 'ملخصات تلقائية للأحداث والأوامر والتطبيقات والمواقع',
+              icon: Icons.insights_rounded,
+              onTap: () => _open(
+                context,
+                SmartInsightsScreen(userId: userId, device: device),
               ),
             ),
             ActionTile(

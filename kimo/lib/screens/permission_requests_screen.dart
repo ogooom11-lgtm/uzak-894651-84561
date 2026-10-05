@@ -103,6 +103,12 @@ class PermissionRequestsScreen extends StatelessWidget {
                             icon: const Icon(Icons.lock_open),
                             label: const Text('ساعة'),
                           ),
+                          FilledButton.icon(
+                            onPressed: () =>
+                                _answer(context, request, true, always: true),
+                            icon: const Icon(Icons.verified_rounded),
+                            label: const Text('السماح دائماً'),
+                          ),
                         ],
                       ),
                     ],

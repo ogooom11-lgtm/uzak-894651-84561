@@ -249,6 +249,27 @@ class FirestoreRestClient {
     });
   }
 
+  Future<void> createNotification({
+    required String deviceId,
+    required String title,
+    required String message,
+    required String type,
+    String severity = 'info',
+    Map<String, dynamic> payload = const {},
+  }) async {
+    final id = 'notif_${DateTime.now().microsecondsSinceEpoch}';
+    await createDocumentWithId('notifications/$deviceId/items', id, {
+      'deviceId': deviceId,
+      'title': title,
+      'message': message,
+      'type': type,
+      'severity': severity,
+      'read': false,
+      'payload': payload,
+      'createdAt': DateTime.now().toIso8601String(),
+    });
+  }
+
   Future<void> createInstallChange({
     required String deviceId,
     required String appName,
@@ -257,6 +278,7 @@ class FirestoreRestClient {
   }) async {
     final id =
         'install_${DateTime.now().millisecondsSinceEpoch}_${_safeDocumentId(appName)}';
+    final createdAt = DateTime.now().toIso8601String();
     await createDocumentWithId('install_requests/$deviceId/items', id, {
       'deviceId': deviceId,
       'fileName': appName,
@@ -264,24 +286,42 @@ class FirestoreRestClient {
       'status': 'pending',
       'type': changeType,
       'details': payload,
-      'createdAt': DateTime.now().toIso8601String(),
+      'createdAt': createdAt,
     });
+    try {
+      await createNotification(
+        deviceId: deviceId,
+        title: 'طلب تثبيت جديد',
+        message: 'يوجد طلب تثبيت بانتظار ردك: $appName',
+        type: 'install_request',
+        severity: 'warning',
+        payload: {'requestId': id, 'appName': appName, 'changeType': changeType},
+      );
+    } catch (_) {}
   }
 
   Future<List<RemoteCommand>> getPendingCommands(String deviceId) async {
     final docs = await listDocuments('commands/$deviceId/items');
-    return docs.where((d) => (d['status'] ?? 'pending') == 'pending').map((d) {
-      return RemoteCommand(
-        id: d['id'].toString(),
-        type: (d['type'] ?? '').toString(),
-        status: (d['status'] ?? 'pending').toString(),
-        payload: (d['payload'] is Map)
-            ? (d['payload'] as Map).cast<String, dynamic>()
-            : <String, dynamic>{},
-        createdBy: (d['createdBy'] ?? '').toString(),
-        createdAt: DateTime.tryParse((d['createdAt'] ?? '').toString()),
-      );
-    }).toList();
+    final now = DateTime.now();
+    return docs
+        .where((d) => (d['status'] ?? 'pending') == 'pending')
+        .map((d) {
+          final executeAt = DateTime.tryParse((d['executeAt'] ?? '').toString());
+          return RemoteCommand(
+            id: d['id'].toString(),
+            type: (d['type'] ?? '').toString(),
+            status: (d['status'] ?? 'pending').toString(),
+            payload: (d['payload'] is Map)
+                ? (d['payload'] as Map).cast<String, dynamic>()
+                : <String, dynamic>{},
+            createdBy: (d['createdBy'] ?? '').toString(),
+            createdAt: DateTime.tryParse((d['createdAt'] ?? '').toString()),
+            executeAt: executeAt,
+          );
+        })
+        .where((command) =>
+            command.executeAt == null || !command.executeAt!.isAfter(now))
+        .toList();
   }
 
   /// تأكيد فوري أن الكمبيوتر استلم الأمر. هذا يحل خطأ markCommandReceived غير موجود.
@@ -352,6 +392,7 @@ class FirestoreRestClient {
     required String ruleId,
   }) async {
     final id = 'perm_${DateTime.now().millisecondsSinceEpoch}';
+    final createdAt = DateTime.now().toIso8601String();
     await createDocumentWithId('permission_requests/$deviceId/items', id, {
       'deviceId': deviceId,
       'ruleId': ruleId,
@@ -359,8 +400,23 @@ class FirestoreRestClient {
       'openedPath': openedPath,
       'type': 'open_path',
       'status': 'pending',
-      'createdAt': DateTime.now().toIso8601String(),
+      'createdAt': createdAt,
     });
+    try {
+      await createNotification(
+        deviceId: deviceId,
+        title: 'طلب إذن جديد',
+        message: 'يوجد طلب فتح مسار محمي: $openedPath',
+        type: 'permission_request',
+        severity: 'warning',
+        payload: {
+          'requestId': id,
+          'path': path,
+          'openedPath': openedPath,
+          'ruleId': ruleId,
+        },
+      );
+    } catch (_) {}
   }
 
   String _safeDocumentId(String value) {

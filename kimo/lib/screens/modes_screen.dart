@@ -37,6 +37,18 @@ class ModesScreen extends StatelessWidget {
     }
   }
 
+  Future<void> _privacy(BuildContext context, bool enabled) async {
+    await context.read<DeviceRepository>().sendCommand(
+          userId: userId,
+          deviceId: device.id,
+          type: CommandType.privacyMode,
+          payload: {'enabled': enabled},
+        );
+    if (context.mounted) {
+      showAppSnack(context, enabled ? 'تم تشغيل وضع الخصوصية.' : 'تم إيقاف وضع الخصوصية.');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -79,6 +91,20 @@ class ModesScreen extends StatelessWidget {
             icon: Icons.shield_rounded,
             color: const Color(0xFF7C3AED),
             onTap: () => _sendMode(context, mode: 'protection', label: 'الحماية القصوى'),
+          ),
+          _ModeCard(
+            title: 'تشغيل وضع الخصوصية',
+            subtitle: 'يوقف لقطات الشاشة وتصفح/بحث الملفات وجلب السجلات الحساسة مؤقتاً.',
+            icon: Icons.visibility_off_rounded,
+            color: const Color(0xFF0F766E),
+            onTap: () => _privacy(context, true),
+          ),
+          _ModeCard(
+            title: 'إيقاف وضع الخصوصية',
+            subtitle: 'يعيد السماح بالأوامر الحساسة بعد انتهاء الحاجة للخصوصية.',
+            icon: Icons.visibility_rounded,
+            color: const Color(0xFF0284C7),
+            onTap: () => _privacy(context, false),
           ),
         ],
       ),

@@ -68,7 +68,7 @@ class TelegramNotifierService {
             Uri.parse(_api('getUpdates')).replace(queryParameters: {
               if (offset != null) 'offset': offset.toString(),
               'timeout': '0',
-              'allowed_updates': jsonEncode(['message']),
+              'allowed_updates': jsonEncode(['message', 'callback_query']),
             }),
           )
           .timeout(_httpTimeout);
@@ -114,6 +114,31 @@ class TelegramNotifierService {
       return true;
     } catch (e) {
       await store.appendLog('telegram_delete_webhook_exception', e.toString());
+      return false;
+    }
+  }
+
+  Future<bool> answerCallbackQuery(
+    String callbackQueryId, {
+    String text = '',
+  }) async {
+    if (config.telegramBotToken.trim().isEmpty || callbackQueryId.isEmpty) {
+      return false;
+    }
+    try {
+      final response = await client
+          .post(
+            Uri.parse(_api('answerCallbackQuery')),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'callback_query_id': callbackQueryId,
+              if (text.isNotEmpty) 'text': text,
+            }),
+          )
+          .timeout(_httpTimeout);
+      return response.statusCode >= 200 && response.statusCode < 300;
+    } catch (e) {
+      await store.appendLog('telegram_callback_answer_exception', e.toString());
       return false;
     }
   }

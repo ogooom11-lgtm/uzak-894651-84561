@@ -6,6 +6,7 @@ import 'package:uuid/uuid.dart';
 import '../core/command_type.dart';
 import '../models/blocked_item.dart';
 import '../models/command_response.dart';
+import '../models/device_notification.dart';
 import '../models/install_request.dart';
 import '../models/installed_app.dart';
 import '../models/log_entry.dart';
@@ -213,6 +214,16 @@ class MockDeviceRepository implements DeviceRepository {
         createdAt: DateTime.now().subtract(const Duration(minutes: 2)),
       ),
     ];
+    _notifications = [
+      DeviceNotification(
+        id: 'notif_demo_001',
+        title: 'طلب إذن جديد',
+        message: 'يوجد طلب فتح مسار محمي بانتظار ردك.',
+        type: 'permission_request',
+        severity: 'warning',
+        createdAt: DateTime.now().subtract(const Duration(minutes: 2)),
+      ),
+    ];
   }
 
   final _uuid = const Uuid();
@@ -229,6 +240,8 @@ class MockDeviceRepository implements DeviceRepository {
   final _screenshotsController =
       StreamController<List<ScreenshotItem>>.broadcast();
   final _logsController = StreamController<List<LogEntry>>.broadcast();
+  final _notificationsController =
+      StreamController<List<DeviceNotification>>.broadcast();
   final _responsesController =
       StreamController<List<CommandResponse>>.broadcast();
 
@@ -241,6 +254,7 @@ class MockDeviceRepository implements DeviceRepository {
   late List<BlockedItem> _blockedItems;
   late List<ScreenshotItem> _screenshots;
   late List<LogEntry> _logs;
+  late List<DeviceNotification> _notifications;
   List<CommandResponse> _responses = [];
 
   Stream<List<T>> _withInitial<T>(
@@ -284,6 +298,31 @@ class MockDeviceRepository implements DeviceRepository {
   @override
   Stream<List<LogEntry>> watchRequestedLogs(String deviceId) =>
       _withInitial(_logs, _logsController);
+
+  @override
+  Stream<List<DeviceNotification>> watchNotifications(String deviceId) =>
+      _withInitial(_notifications, _notificationsController);
+
+  @override
+  Future<void> markNotificationRead({
+    required String deviceId,
+    required String notificationId,
+  }) async {
+    _notifications = _notifications.map((item) {
+      if (item.id != notificationId) return item;
+      return DeviceNotification(
+        id: item.id,
+        title: item.title,
+        message: item.message,
+        type: item.type,
+        severity: item.severity,
+        read: true,
+        createdAt: item.createdAt,
+        payload: item.payload,
+      );
+    }).toList();
+    _notificationsController.add(List.unmodifiable(_notifications));
+  }
 
   @override
   Stream<List<CommandResponse>> watchCommandResponses(String deviceId) =>
@@ -368,6 +407,15 @@ class MockDeviceRepository implements DeviceRepository {
       _openAppsController.add(List.unmodifiable(_openApps));
     }
     return id;
+  }
+
+  @override
+  Future<void> cancelCommand({
+    required String deviceId,
+    required String commandId,
+  }) async {
+    _responses = _responses.where((item) => item.commandId != commandId).toList();
+    _responsesController.add(List.unmodifiable(_responses));
   }
 
   @override

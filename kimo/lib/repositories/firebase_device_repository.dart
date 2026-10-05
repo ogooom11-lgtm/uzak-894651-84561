@@ -9,6 +9,7 @@ import '../core/command_type.dart';
 import '../core/date_mapper.dart';
 import '../models/blocked_item.dart';
 import '../models/command_response.dart';
+import '../models/device_notification.dart';
 import '../models/install_request.dart';
 import '../models/installed_app.dart';
 import '../models/log_entry.dart';
@@ -207,6 +208,33 @@ class FirebaseDeviceRepository implements DeviceRepository {
   }
 
   @override
+  Stream<List<DeviceNotification>> watchNotifications(String deviceId) {
+    return _items(FirebasePaths.notifications, deviceId)
+        .limit(100)
+        .snapshots()
+        .map((snapshot) {
+      final items = snapshot.docs
+          .map((doc) => DeviceNotification.fromMap(doc.id, doc.data()))
+          .toList();
+      items.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      return items;
+    });
+  }
+
+  @override
+  Future<void> markNotificationRead({
+    required String deviceId,
+    required String notificationId,
+  }) {
+    return _items(FirebasePaths.notifications, deviceId)
+        .doc(notificationId)
+        .set(
+          {'read': true, 'readAt': FieldValue.serverTimestamp()},
+          SetOptions(merge: true),
+        );
+  }
+
+  @override
   Stream<List<CommandResponse>> watchCommandResponses(String deviceId) {
     return _items(FirebasePaths.responses, deviceId)
         .limit(500)
@@ -339,6 +367,14 @@ class FirebaseDeviceRepository implements DeviceRepository {
       'payload': payload,
     });
     return id;
+  }
+
+  @override
+  Future<void> cancelCommand({
+    required String deviceId,
+    required String commandId,
+  }) {
+    return _items(FirebasePaths.commands, deviceId).doc(commandId).delete();
   }
 
   @override

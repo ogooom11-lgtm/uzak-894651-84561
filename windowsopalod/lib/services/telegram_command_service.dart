@@ -68,6 +68,12 @@ class TelegramCommandService {
   }
 
   Future<void> _handleUpdate(Map<String, dynamic> update) async {
+    final callback = (update['callback_query'] as Map?)?.cast<String, dynamic>();
+    if (callback != null) {
+      await _handleCallbackQuery(callback);
+      return;
+    }
+
     final message = (update['message'] as Map?)?.cast<String, dynamic>();
     if (message == null) return;
 
@@ -88,14 +94,52 @@ class TelegramCommandService {
     );
     if (handled) return;
 
+    await _handleExecutableText(
+      text,
+      chatId: chatId,
+      replyToMessageId: messageId,
+    );
+  }
+
+  Future<void> _handleCallbackQuery(Map<String, dynamic> callback) async {
+    final id = (callback['id'] ?? '').toString();
+    final data = (callback['data'] ?? '').toString();
+    final message = (callback['message'] as Map?)?.cast<String, dynamic>();
+    final chat = (message?['chat'] as Map?)?.cast<String, dynamic>();
+    final chatId = (chat?['id'] ?? '').toString();
+    final messageId = (message?['message_id'] as num?)?.toInt();
+    if (chatId.isEmpty || chatId != telegram.config.telegramChatId.trim()) return;
+
+    await telegram.answerCallbackQuery(id, text: 'تم الاستلام');
+    if (data == 'menu') {
+      await telegram.sendMessage(
+        _helpText(),
+        chatId: chatId,
+        replyToMessageId: messageId,
+        replyMarkup: _inlineMainMenu(),
+      );
+      return;
+    }
+    await _handleExecutableText(
+      _textFromCallbackData(data),
+      chatId: chatId,
+      replyToMessageId: messageId,
+    );
+  }
+
+  Future<void> _handleExecutableText(
+    String text, {
+    required String chatId,
+    int? replyToMessageId,
+  }) async {
     final selectedDevice =
         (store.get<String>('telegramSelectedDeviceId') ?? '').toString().trim();
     if (selectedDevice.isEmpty) {
       await telegram.sendMessage(
         'اختر الجهاز أولاً:\n/devices\nثم:\n/use $deviceId',
         chatId: chatId,
-        replyToMessageId: messageId,
-        replyMarkup: _mainKeyboard(),
+        replyToMessageId: replyToMessageId,
+        replyMarkup: _inlineMainMenu(),
       );
       return;
     }
@@ -106,8 +150,8 @@ class TelegramCommandService {
       await telegram.sendMessage(
         _helpText(),
         chatId: chatId,
-        replyToMessageId: messageId,
-        replyMarkup: _mainKeyboard(),
+        replyToMessageId: replyToMessageId,
+        replyMarkup: _inlineMainMenu(),
       );
       return;
     }
@@ -115,7 +159,7 @@ class TelegramCommandService {
     await telegram.sendMessage(
       'تم الاستلام: ${parsed.type}\nالجهاز: $deviceName',
       chatId: chatId,
-      replyToMessageId: messageId,
+      replyToMessageId: replyToMessageId,
     );
 
     final result = await executor.executeTelegramCommand(
@@ -126,8 +170,8 @@ class TelegramCommandService {
     await telegram.sendMessage(
       _formatResult(parsed.type, result),
       chatId: chatId,
-      replyToMessageId: messageId,
-      replyMarkup: _mainKeyboard(),
+      replyToMessageId: replyToMessageId,
+      replyMarkup: _inlineMainMenu(),
     );
   }
 
@@ -148,7 +192,7 @@ class TelegramCommandService {
         _helpText(),
         chatId: chatId,
         replyToMessageId: replyToMessageId,
-        replyMarkup: _mainKeyboard(),
+        replyMarkup: _inlineMainMenu(),
       );
       return true;
     }
@@ -222,6 +266,14 @@ class TelegramCommandService {
     }
     if (lower == 'health' || lower == 'صحة' || lower == 'صحة الجهاز') {
       return const _ParsedTelegramCommand('system_health');
+    }
+    if (lower == 'privacy on' || lower == 'خصوصية تشغيل') {
+      return const _ParsedTelegramCommand('privacy_mode', {'enabled': true});
+    }
+    if (lower == 'privacy off' ||
+        lower == 'خصوصية ايقاف' ||
+        lower == 'خصوصية إيقاف') {
+      return const _ParsedTelegramCommand('privacy_mode', {'enabled': false});
     }
     if (lower.startsWith('mode ') || lower.startsWith('وضع ')) {
       final mode = lower.startsWith('mode ')
@@ -449,6 +501,7 @@ class TelegramCommandService {
         'أوامر سريعة:\n'
         'status, screenshot, health, emergency, logs\n'
         'mode study, mode work, mode kids, mode protection\n'
+        'privacy on, privacy off\n'
         'lock, lock 30, unlock\n'
         'shutdown, restart, logout\n'
         'volume 0/25/50/75/100, volup, voldown, mute, unmute\n'
@@ -463,6 +516,61 @@ class TelegramCommandService {
         'qr, permissions, stop commands';
   }
 
+  String _textFromCallbackData(String data) {
+    switch (data) {
+      case 'status':
+      case 'screenshot':
+      case 'health':
+      case 'emergency':
+      case 'logs':
+        return data;
+      case 'lock':
+        return 'lock';
+      case 'unlock':
+        return 'unlock';
+      case 'mode_study':
+        return 'mode study';
+      case 'mode_work':
+        return 'mode work';
+      case 'mode_kids':
+        return 'mode kids';
+      case 'mode_protection':
+        return 'mode protection';
+      case 'privacy_on':
+        return 'privacy on';
+      case 'privacy_off':
+        return 'privacy off';
+      default:
+        return data;
+    }
+  }
+
+  Map<String, dynamic> _inlineMainMenu() {
+    Map<String, String> button(String text, String data) => {
+          'text': text,
+          'callback_data': data,
+        };
+
+    return {
+      'inline_keyboard': [
+        [
+          button('الحالة', 'status'),
+          button('لقطة', 'screenshot'),
+          button('الصحة', 'health'),
+        ],
+        [
+          button('طوارئ', 'emergency'),
+          button('قفل', 'lock'),
+          button('فتح القفل', 'unlock'),
+        ],
+        [button('دراسة', 'mode_study'), button('عمل', 'mode_work')],
+        [button('أطفال', 'mode_kids'), button('حماية قصوى', 'mode_protection')],
+        [button('خصوصية تشغيل', 'privacy_on'), button('خصوصية إيقاف', 'privacy_off')],
+        [button('السجلات', 'logs'), button('مساعدة', 'menu')],
+      ],
+    };
+  }
+
   Map<String, dynamic> _mainKeyboard() {
     Map<String, String> button(String text) => {'text': text};
 
@@ -472,6 +580,7 @@ class TelegramCommandService {
         [button('status'), button('screenshot'), button('health')],
         [button('emergency'), button('mode study'), button('mode work')],
         [button('mode kids'), button('mode protection'), button('logs')],
+        [button('privacy on'), button('privacy off')],
         [button('lock'), button('lock 30'), button('unlock')],
         [button('volume 25'), button('volume 50'), button('mute')],
         [button('volup'), button('voldown'), button('unmute')],

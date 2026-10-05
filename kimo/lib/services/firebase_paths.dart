@@ -8,6 +8,7 @@ class FirebasePaths {
   static const installRequests = 'install_requests';
   static const screenshots = 'screenshots';
   static const requestedLogs = 'requested_logs';
+  static const notifications = 'notifications';
   static const installedApps = 'installed_apps';
   static const blockedItems = 'blocked_items';
   static const pairingTokens = 'pairing_tokens';

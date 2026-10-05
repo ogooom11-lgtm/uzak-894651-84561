@@ -9,6 +9,9 @@ class RemoteCommand {
   /// يستخدمه تطبيق الكمبيوتر لتجاهل الأوامر القديمة.
   final DateTime? createdAt;
 
+  /// وقت التنفيذ المطلوب. إذا كان في المستقبل يبقى الأمر Pending حتى يحين وقته.
+  final DateTime? executeAt;
+
   const RemoteCommand({
     required this.id,
     required this.type,
@@ -16,5 +19,6 @@ class RemoteCommand {
     required this.payload,
     required this.createdBy,
     this.createdAt,
+    this.executeAt,
   });
 }

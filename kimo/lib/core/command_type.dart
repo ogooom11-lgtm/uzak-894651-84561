@@ -12,6 +12,7 @@ enum CommandType {
   emergencyMode,
   applyPresetMode,
   systemHealth,
+  privacyMode,
   wifiOn,
   wifiOff,
   internetOffPermanent,
@@ -87,6 +88,8 @@ extension CommandTypeX on CommandType {
         return 'apply_preset_mode';
       case CommandType.systemHealth:
         return 'system_health';
+      case CommandType.privacyMode:
+        return 'privacy_mode';
       case CommandType.wifiOn:
         return 'wifi_on';
       case CommandType.wifiOff:
@@ -206,6 +209,8 @@ extension CommandTypeX on CommandType {
         return 'تفعيل وضع جاهز';
       case CommandType.systemHealth:
         return 'صحة الجهاز';
+      case CommandType.privacyMode:
+        return 'وضع الخصوصية';
       case CommandType.wifiOn:
         return 'تشغيل WiFi';
       case CommandType.wifiOff:

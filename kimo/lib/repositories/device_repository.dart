@@ -1,6 +1,7 @@
 import '../core/command_type.dart';
 import '../models/blocked_item.dart';
 import '../models/command_response.dart';
+import '../models/device_notification.dart';
 import '../models/install_request.dart';
 import '../models/installed_app.dart';
 import '../models/log_entry.dart';
@@ -21,7 +22,13 @@ abstract class DeviceRepository {
   Stream<List<BlockedItem>> watchBlockedItems(String deviceId);
   Stream<List<ScreenshotItem>> watchScreenshots(String deviceId);
   Stream<List<LogEntry>> watchRequestedLogs(String deviceId);
+  Stream<List<DeviceNotification>> watchNotifications(String deviceId);
   Stream<List<CommandResponse>> watchCommandResponses(String deviceId);
+
+  Future<void> markNotificationRead({
+    required String deviceId,
+    required String notificationId,
+  });
 
   Future<void> pairDeviceByQrPayload({
     required String userId,
@@ -39,6 +46,11 @@ abstract class DeviceRepository {
     required CommandType type,
     Map<String, dynamic> payload = const {},
     DateTime? executeAt,
+  });
+
+  Future<void> cancelCommand({
+    required String deviceId,
+    required String commandId,
   });
 
   Future<CommandResponse?> waitForCommandResponse({

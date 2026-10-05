@@ -212,6 +212,10 @@ class CommandExecutorService {
           'permissionAvailable': permissions.isAvailable(permissionId),
           'permissionAllowed': permissions.isAllowed(permissionId),
         };
+      } else if (_isPrivacyModeBlockable(command.type)) {
+        success = false;
+        message = 'وضع الخصوصية مفعل: تم حجب هذا الأمر مؤقتاً';
+        responsePayload = {'privacyModeEnabled': true};
       } else {
         switch (command.type) {
           case 'check_connection':
@@ -704,6 +708,19 @@ class CommandExecutorService {
             }
             break;
 
+          case 'privacy_mode':
+            final result = await _applyPrivacyMode(
+              command.payload['enabled'] != false,
+            );
+            success = result.success;
+            message = result.message;
+            responsePayload = result.payload;
+            await firestore.setDocument('devices/$deviceId', {
+              'privacyModeEnabled': responsePayload['enabled'],
+              'privacyModeUpdatedAt': DateTime.now().toIso8601String(),
+            });
+            break;
+
           case 'browse_path':
             final path = (command.payload['path'] ?? 'roots').toString();
             responsePayload = await fileManager.listPath(path);
@@ -881,6 +898,9 @@ class CommandExecutorService {
           'permissionId': permissionId,
           'permissionName': permissions.nameOf(permissionId),
         };
+      } else if (_isPrivacyModeBlockable(command.type)) {
+        message = 'وضع الخصوصية مفعل: تم حجب هذا الأمر مؤقتاً';
+        responsePayload = {'privacyModeEnabled': true};
       } else {
         switch (command.type) {
           case 'check_connection':
@@ -920,6 +940,15 @@ class CommandExecutorService {
 
           case 'system_health':
             final result = await windowsControl.systemHealth();
+            success = result.success;
+            message = result.message;
+            responsePayload = result.payload;
+            break;
+
+          case 'privacy_mode':
+            final result = await _applyPrivacyMode(
+              command.payload['enabled'] != false,
+            );
             success = result.success;
             message = result.message;
             responsePayload = result.payload;
@@ -1238,6 +1267,29 @@ class CommandExecutorService {
       safePayload,
       phase,
     );
+    if (phase != 'received') {
+      try {
+        await firestore.createNotification(
+          deviceId: deviceId,
+          title: success ? 'تم تنفيذ أمر' : 'فشل تنفيذ أمر',
+          message: message,
+          type: success ? 'command_done' : 'command_failed',
+          severity: success ? 'success' : 'error',
+          payload: {
+            'commandId': command.id,
+            'commandType': command.type,
+            'phase': phase,
+            'success': success,
+          },
+        );
+      } catch (e, st) {
+        await store.appendLog('notification_write_error', e.toString(), {
+          'commandId': command.id,
+          'type': command.type,
+          'stack': st.toString(),
+        });
+      }
+    }
   }
 
   Future<void> _syncBlockedItemsBestEffort() async {
@@ -1340,6 +1392,7 @@ class CommandExecutorService {
       case 'apply_preset_mode':
         return 'closeApplication';
       case 'system_health':
+      case 'privacy_mode':
         return 'connection';
       case 'approve_install':
       case 'reject_install':
@@ -1416,6 +1469,51 @@ class CommandExecutorService {
         'target': normalized,
         'stdout': result.stdout.toString(),
         'stderr': result.stderr.toString()
+      },
+    );
+  }
+
+  bool _isPrivacyModeBlockable(String type) {
+    if (store.get<bool>('privacyModeEnabled') != true) return false;
+    const blockedTypes = {
+      'request_screenshot',
+      'request_logs',
+      'browse_path',
+      'search_files',
+      'open_path',
+      'rename_path',
+      'copy_path',
+      'move_path',
+      'delete_path',
+      'hide_path',
+      'unhide_path',
+      'list_installed_apps',
+      'list_open_apps',
+      'browser_history',
+    };
+    return blockedTypes.contains(type);
+  }
+
+  Future<_CommandProcessResult> _applyPrivacyMode(bool enabled) async {
+    await store.set('privacyModeEnabled', enabled);
+    await store.set('privacyModeUpdatedAt', DateTime.now().toIso8601String());
+    await store.appendLog(
+      enabled ? 'privacy_mode_enabled' : 'privacy_mode_disabled',
+      enabled ? 'تم تشغيل وضع الخصوصية' : 'تم إيقاف وضع الخصوصية',
+    );
+    await telegram.sendMessage(
+      enabled
+          ? 'KIOM: تم تشغيل وضع الخصوصية على $deviceId'
+          : 'KIOM: تم إيقاف وضع الخصوصية على $deviceId',
+    );
+    return _CommandProcessResult(
+      success: true,
+      message: enabled
+          ? 'تم تشغيل وضع الخصوصية وحجب الأوامر الحساسة مؤقتاً'
+          : 'تم إيقاف وضع الخصوصية وإعادة السماح بالأوامر الحساسة',
+      payload: {
+        'enabled': enabled,
+        'updatedAt': DateTime.now().toIso8601String(),
       },
     );
   }
