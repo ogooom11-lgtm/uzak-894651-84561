@@ -90,6 +90,14 @@ class LocalLinkedDevicesStore {
       'bluetoothStatus': device.bluetoothStatus,
       'volume': device.volume,
       'isMuted': device.isMuted,
+      'telegramChatId': device.telegramChatId,
+      'telegramBotUsername': device.telegramBotUsername,
+      'telegramLinkedAt': device.telegramLinkedAt?.toIso8601String(),
+      'activeMode': device.activeMode,
+      'isEmergency': device.isEmergency,
+      'isPrivacy': device.isPrivacy,
+      'totalInstalledApps': device.totalInstalledApps,
+      'totalOpenApps': device.totalOpenApps,
     };
   }
 }

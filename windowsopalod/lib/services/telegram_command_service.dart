@@ -87,7 +87,7 @@ class TelegramCommandService {
     final allowedChatId = telegram.effectiveChatId;
     if (allowedChatId.isEmpty) {
       await telegram.sendMessage(
-        'Chat ID الخاص بهذه المحادثة هو:\n$chatId\n\nانسخه والصقه في تطبيق الهاتف لإكمال ربط Telegram مع الكمبيوتر.',
+        '👋 مرحباً! معرف المحادثة (Chat ID) الخاص بك هو:\n$chatId\n\nانسخه وضعه في تطبيق الهاتف (KIMO) لربط البوت بهذا الكمبيوتر فوراً.',
         chatId: chatId,
         replyToMessageId: messageId,
       );
@@ -145,8 +145,12 @@ class TelegramCommandService {
     required String chatId,
     int? replyToMessageId,
   }) async {
-    final selectedDevice =
+    var selectedDevice =
         (store.get<String>('telegramSelectedDeviceId') ?? '').toString().trim();
+    if (selectedDevice.isEmpty && deviceId.isNotEmpty) {
+      selectedDevice = deviceId;
+      await store.set('telegramSelectedDeviceId', deviceId);
+    }
     if (selectedDevice.isEmpty) {
       await telegram.sendMessage(
         'اختر الجهاز أولاً:\n/devices\nثم:\n/use $deviceId',
