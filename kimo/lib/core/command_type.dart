@@ -59,6 +59,7 @@ enum CommandType {
   deletePath,
   hidePath,
   unhidePath,
+  sendFileToTelegram,
 }
 
 extension CommandTypeX on CommandType {
@@ -184,6 +185,8 @@ extension CommandTypeX on CommandType {
         return 'hide_path';
       case CommandType.unhidePath:
         return 'unhide_path';
+      case CommandType.sendFileToTelegram:
+        return 'send_file_to_telegram';
     }
   }
 
@@ -309,6 +312,8 @@ extension CommandTypeX on CommandType {
         return 'إخفاء';
       case CommandType.unhidePath:
         return 'إظهار';
+      case CommandType.sendFileToTelegram:
+        return 'إرسال الملف إلى Telegram';
     }
   }
 

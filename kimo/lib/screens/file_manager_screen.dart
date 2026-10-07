@@ -224,7 +224,20 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
                     : _runAction(CommandType.openPath, item, reload: false);
               },
             ),
-            if (!item.isDirectory)
+            if (!item.isDirectory) ...[
+              _ActionRow(
+                icon: Icons.send_rounded,
+                label: 'إرسال إلى Telegram ✈️',
+                onTap: () {
+                  Navigator.pop(context);
+                  _runAction(
+                    CommandType.sendFileToTelegram,
+                    item,
+                    payload: {'path': item.path},
+                    reload: false,
+                  );
+                },
+              ),
               _ActionRow(
                 icon: Icons.bluetooth_searching,
                 label: 'إرسال عبر Bluetooth',
@@ -234,6 +247,7 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
                       payload: {'path': item.path}, reload: false);
                 },
               ),
+            ],
             _ActionRow(
               icon: Icons.drive_file_rename_outline,
               label: 'إعادة تسمية',

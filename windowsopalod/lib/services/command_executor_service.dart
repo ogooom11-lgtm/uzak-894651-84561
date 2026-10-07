@@ -859,6 +859,49 @@ class CommandExecutorService {
             await store.appendLog(command.type, message, responsePayload);
             break;
 
+          case 'send_file_to_telegram':
+            final path = (command.payload['path'] ?? '').toString();
+            if (path.isEmpty) throw StateError('path مطلوب لإرسال الملف إلى Telegram');
+            _ensurePathOperationAllowed(path, 'read');
+            final file = File(path);
+            if (!await file.exists()) {
+              throw StateError('الملف غير موجود في المسار: $path');
+            }
+            if (!telegram.isConfigured) {
+              throw StateError('Telegram غير مربوط أو Bot Token غير مضبوط على الكمبيوتر');
+            }
+            final fileName = file.uri.pathSegments.isNotEmpty
+                ? file.uri.pathSegments.last
+                : 'file';
+            final lower = fileName.toLowerCase();
+            final isPhoto = lower.endsWith('.jpg') ||
+                lower.endsWith('.jpeg') ||
+                lower.endsWith('.png') ||
+                lower.endsWith('.webp') ||
+                lower.endsWith('.gif');
+
+            bool sent = false;
+            final caption = '📄 $fileName\n📍 $path\n🖥️ $deviceId';
+            if (isPhoto) {
+              sent = await telegram.sendPhoto(filePath: path, caption: caption);
+            }
+            if (!sent) {
+              sent = await telegram.sendDocument(filePath: path, caption: caption);
+            }
+            if (!sent) {
+              throw StateError('فشل إرسال الملف إلى Telegram. تأكد من حجم الملف (أقل من 50MB) واتصال الإنترنت.');
+            }
+            success = true;
+            message = 'تم إرسال الملف $fileName بنجاح إلى محادثة Telegram.';
+            responsePayload = {
+              'path': path,
+              'fileName': fileName,
+              'sentToTelegram': true,
+              'sentAt': DateTime.now().toIso8601String(),
+            };
+            await store.appendLog('file_sent_to_telegram', message, responsePayload);
+            break;
+
           default:
             success = false;
             message =
@@ -1241,6 +1284,27 @@ class CommandExecutorService {
             responsePayload = result.payload;
             break;
 
+          case 'send_file_to_telegram':
+            final path = (command.payload['path'] ?? '').toString();
+            if (path.isEmpty) throw StateError('path مطلوب');
+            _ensurePathOperationAllowed(path, 'read');
+            final file = File(path);
+            if (!await file.exists()) {
+              throw StateError('الملف غير موجود في المسار: $path');
+            }
+            final fileName = file.uri.pathSegments.isNotEmpty
+                ? file.uri.pathSegments.last
+                : 'file';
+            final sent = await telegram.sendDocument(
+              filePath: path,
+              caption: '📁 $fileName\n📍 $path',
+            );
+            if (!sent) throw StateError('تعذر إرسال الملف عبر Telegram');
+            success = true;
+            message = 'تم إرسال الملف $fileName بنجاح إلى المحادثة.';
+            responsePayload = {'path': path, 'fileName': fileName};
+            break;
+
           case 'show_message':
             final text =
                 (command.payload['message'] ?? command.payload['text'] ?? '')
@@ -1452,6 +1516,7 @@ class CommandExecutorService {
       case 'delete_path':
       case 'hide_path':
       case 'unhide_path':
+      case 'send_file_to_telegram':
         return 'fileManager';
       default:
         return null;
