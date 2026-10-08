@@ -375,7 +375,7 @@ class _TelegramSetupScreenState extends State<TelegramSetupScreen> {
                   ),
                   if (widget.device?.telegramLinkedAt != null)
                     Text(
-                      'تاريخ الربط: ${formatDate(widget.device!.telegramLinkedAt!)}',
+                      'تاريخ الربط: ${_formatDate(widget.device!.telegramLinkedAt!)}',
                       style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
                     ),
                   const SizedBox(height: 12),
@@ -472,5 +472,9 @@ class _TelegramSetupScreenState extends State<TelegramSetupScreen> {
         ],
       ),
     );
+  }
+
+  String _formatDate(DateTime dt) {
+    return '${dt.year}/${dt.month.toString().padLeft(2, '0')}/${dt.day.toString().padLeft(2, '0')} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
   }
 }

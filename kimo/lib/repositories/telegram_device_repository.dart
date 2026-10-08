@@ -659,18 +659,13 @@ class TelegramDeviceRepository implements DeviceRepository {
     required String commandId,
     Duration timeout = const Duration(seconds: 10),
   }) async {
-    final existing = _commandResponses[deviceId]?.firstWhere(
-      (e) => e.commandId == commandId && e.isFinalPhase,
-      orElse: () => const CommandResponse(
-        id: '',
-        commandId: '',
-        success: false,
-        message: '',
-        createdAt: null as dynamic,
-      ),
-    );
-    if (existing != null && existing.commandId.isNotEmpty) {
-      return existing;
+    final existingList = _commandResponses[deviceId];
+    if (existingList != null) {
+      for (final e in existingList) {
+        if (e.commandId == commandId && e.isFinalPhase) {
+          return e;
+        }
+      }
     }
 
     final completer = Completer<CommandResponse>();
@@ -768,7 +763,7 @@ class TelegramDeviceRepository implements DeviceRepository {
     await sendCommand(
       userId: userId,
       deviceId: deviceId,
-      type: CommandType.savePathRule,
+      type: CommandType.addPathRule,
       payload: rule.toMap(),
     );
   }

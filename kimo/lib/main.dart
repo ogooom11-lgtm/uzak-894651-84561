@@ -89,7 +89,7 @@ ThemeData _appTheme(Brightness brightness) {
         fontWeight: FontWeight.w800,
       ),
     ),
-    cardTheme: CardTheme(
+    cardTheme: CardThemeData(
       elevation: 0,
       color: isDark ? const Color(0xFF131D31) : Colors.white,
       shape: RoundedRectangleBorder(
@@ -123,7 +123,7 @@ ThemeData _appTheme(Brightness brightness) {
       ),
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
     ),
-    dialogTheme: DialogTheme(
+    dialogTheme: DialogThemeData(
       backgroundColor: isDark ? const Color(0xFF101827) : Colors.white,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
     ),
