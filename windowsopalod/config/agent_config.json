@@ -1,6 +1,8 @@
 {
   "telegramBotToken": "8151486801:AAF-hVj-h5R1R7E7m1a8YwZ64X5o5K4w_9o",
   "telegramChatId": "",
+  "telegramCloudDbBotToken": "",
+  "telegramCloudDbChatId": "",
   "pollCommandsEverySeconds": 3,
   "syncOpenAppsEverySeconds": 10,
   "scanExplorerEverySeconds": 5,

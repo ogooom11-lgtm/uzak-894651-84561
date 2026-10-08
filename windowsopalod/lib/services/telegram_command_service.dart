@@ -15,6 +15,7 @@ class TelegramCommandService {
     required this.store,
     required this.telegram,
     required this.executor,
+    this.cloudDbTelegram,
     this.interval = const Duration(seconds: 2),
   });
 
@@ -22,31 +23,99 @@ class TelegramCommandService {
   final String deviceName;
   final JsonFileStore store;
   final TelegramNotifierService telegram;
+  final TelegramNotifierService? cloudDbTelegram;
   final CommandExecutorService executor;
   final Duration interval;
 
   final Map<String, _PendingConfirmation> _pendingConfirmations = {};
   Timer? _timer;
+  Timer? _cloudDbTimer;
   bool _polling = false;
+  bool _cloudDbPolling = false;
 
   void start() {
-    if (!telegram.hasBotToken) {
+    if (!telegram.hasBotToken && (cloudDbTelegram == null || !cloudDbTelegram!.hasBotToken)) {
       unawaited(store.appendLog('telegram_command_start_skipped',
           'لم يبدأ مستقبل أوامر Telegram لأن bot token غير مضبوط'));
       return;
     }
-    _timer?.cancel();
-    _timer = Timer.periodic(interval, (_) => _poll());
-    unawaited(store.appendLog(
-      'telegram_command_start',
-      'بدأ مستقبل أوامر Telegram',
-      {'deviceId': deviceId},
-    ));
-    unawaited(telegram.deleteWebhook(dropPendingUpdates: false));
-    _poll();
+
+    if (telegram.hasBotToken) {
+      _timer?.cancel();
+      _timer = Timer.periodic(interval, (_) => _poll());
+      unawaited(store.appendLog(
+        'telegram_command_start',
+        'بدأ مستقبل أوامر Telegram (التحكم المباشر)',
+        {'deviceId': deviceId},
+      ));
+      unawaited(telegram.deleteWebhook(dropPendingUpdates: false));
+      _poll();
+    }
+
+    final separateCloudDb = cloudDbTelegram != null &&
+        cloudDbTelegram!.hasBotToken &&
+        cloudDbTelegram!.botToken != telegram.botToken;
+
+    if (separateCloudDb) {
+      _cloudDbTimer?.cancel();
+      _cloudDbTimer = Timer.periodic(interval, (_) => _pollCloudDb());
+      unawaited(store.appendLog(
+        'telegram_cloud_db_command_start',
+        'بدأ مستقبل أوامر قاعدة بيانات Telegram السحابية',
+        {'deviceId': deviceId},
+      ));
+      unawaited(cloudDbTelegram!.deleteWebhook(dropPendingUpdates: false));
+      _pollCloudDb();
+    }
   }
 
-  void stop() => _timer?.cancel();
+  void stop() {
+    _timer?.cancel();
+    _cloudDbTimer?.cancel();
+  }
+
+  Future<void> _pollCloudDb() async {
+    if (_cloudDbPolling || cloudDbTelegram == null || !cloudDbTelegram!.hasBotToken) return;
+    _cloudDbPolling = true;
+    try {
+      final lastOffset = store.get<int>('telegramCloudDbLastUpdateOffset');
+      final updates = await cloudDbTelegram!.getUpdates(
+        offset: lastOffset == null ? null : lastOffset + 1,
+      );
+      for (final update in updates) {
+        final updateId = (update['update_id'] as num?)?.toInt();
+        if (updateId != null) {
+          await store.set('telegramCloudDbLastUpdateOffset', updateId);
+        }
+        await _handleCloudDbUpdate(update);
+      }
+    } catch (e, st) {
+      await store.appendLog('telegram_cloud_db_poll_error', e.toString(), {
+        'stack': st.toString(),
+      });
+    } finally {
+      _cloudDbPolling = false;
+    }
+  }
+
+  Future<void> _handleCloudDbUpdate(Map<String, dynamic> update) async {
+    final message = (update['message'] as Map?)?.cast<String, dynamic>();
+    if (message == null) return;
+
+    final chat = (message['chat'] as Map?)?.cast<String, dynamic>();
+    final chatId = (chat?['id'] ?? '').toString();
+    if (chatId.isEmpty) return;
+
+    final text = (message['text'] ?? '').toString().trim();
+    if (text.startsWith('#KIOM_CMD')) {
+      final jsonStr = text.substring('#KIOM_CMD'.length).trim();
+      await _handleMobileCloudCommand(
+        jsonStr,
+        chatId: chatId,
+        targetTelegram: cloudDbTelegram ?? telegram,
+      );
+    }
+  }
 
   Future<void> _poll() async {
     if (_polling) return;
@@ -144,7 +213,12 @@ class TelegramCommandService {
     );
   }
 
-  Future<void> _handleMobileCloudCommand(String jsonStr, {required String chatId}) async {
+  Future<void> _handleMobileCloudCommand(
+    String jsonStr, {
+    required String chatId,
+    TelegramNotifierService? targetTelegram,
+  }) async {
+    final sender = targetTelegram ?? cloudDbTelegram ?? telegram;
     try {
       final envelope = jsonDecode(jsonStr) as Map<String, dynamic>;
       final targetDeviceId = (envelope['deviceId'] ?? '').toString();
@@ -174,7 +248,7 @@ class TelegramCommandService {
       };
 
       final body = jsonEncode(res);
-      await telegram.sendMessage(
+      await sender.sendMessage(
         '#KIOM_RES\n$body',
         chatId: chatId,
         parseMode: '',
@@ -188,7 +262,7 @@ class TelegramCommandService {
           'items': result.payload['items'] ?? const [],
         };
         final fileBody = jsonEncode(fileRes);
-        await telegram.sendMessage(
+        await sender.sendMessage(
           '#KIOM_FILE_RES\n$fileBody',
           chatId: chatId,
           parseMode: '',

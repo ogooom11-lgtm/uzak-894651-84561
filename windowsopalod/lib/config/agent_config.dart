@@ -23,6 +23,24 @@ class AgentConfig {
   final String googleDriveFolderId;
   final String telegramBotToken;
   final String telegramChatId;
+  final String telegramCloudDbBotToken;
+  final String telegramCloudDbChatId;
+
+  String get effectiveCloudDbBotToken {
+    final token = telegramCloudDbBotToken.trim();
+    return token.isNotEmpty ? token : telegramBotToken.trim();
+  }
+
+  String get effectiveCloudDbChatId {
+    final chat = telegramCloudDbChatId.trim();
+    return chat.isNotEmpty ? chat : telegramChatId.trim();
+  }
+
+  bool get hasSeparateCloudDbBot {
+    final dbToken = telegramCloudDbBotToken.trim();
+    final ctrlToken = telegramBotToken.trim();
+    return dbToken.isNotEmpty && dbToken != ctrlToken;
+  }
 
   const AgentConfig({
     required this.projectId,
@@ -46,6 +64,8 @@ class AgentConfig {
     this.googleDriveFolderId = '',
     this.telegramBotToken = '',
     this.telegramChatId = '',
+    this.telegramCloudDbBotToken = '',
+    this.telegramCloudDbChatId = '',
   });
 
   static Future<AgentConfig> load() async {
@@ -80,8 +100,26 @@ class AgentConfig {
       googleDriveRefreshToken:
           (map['googleDriveRefreshToken'] ?? '').toString(),
       googleDriveFolderId: (map['googleDriveFolderId'] ?? '').toString(),
-      telegramBotToken: (map['telegramBotToken'] ?? '').toString(),
-      telegramChatId: (map['telegramChatId'] ?? '').toString(),
+      telegramBotToken: (map['telegramBotToken'] ??
+              map['botToken'] ??
+              map['telegramControlBotToken'] ??
+              '')
+          .toString(),
+      telegramChatId: (map['telegramChatId'] ??
+              map['chatId'] ??
+              map['telegramControlChatId'] ??
+              '')
+          .toString(),
+      telegramCloudDbBotToken: (map['telegramCloudDbBotToken'] ??
+              map['databaseBotToken'] ??
+              map['cloudDbBotToken'] ??
+              '')
+          .toString(),
+      telegramCloudDbChatId: (map['telegramCloudDbChatId'] ??
+              map['databaseChatId'] ??
+              map['cloudDbChatId'] ??
+              '')
+          .toString(),
     );
   }
 
@@ -149,6 +187,8 @@ class AgentConfig {
     final defaultJson = const JsonEncoder.withIndent('  ').convert({
       'telegramBotToken': '8151486801:AAF-hVj-h5R1R7E7m1a8YwZ64X5o5K4w_9o',
       'telegramChatId': '',
+      'telegramCloudDbBotToken': '',
+      'telegramCloudDbChatId': '',
       'pollCommandsEverySeconds': 3,
       'syncOpenAppsEverySeconds': 10,
       'scanExplorerEverySeconds': 5,

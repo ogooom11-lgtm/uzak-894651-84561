@@ -10,21 +10,37 @@ class TelegramNotifierService {
   TelegramNotifierService({
     required this.config,
     required this.store,
+    String? botToken,
+    String? chatId,
     http.Client? client,
-  }) : client = client ?? http.Client();
+  })  : _customBotToken = botToken,
+        _customChatId = chatId,
+        client = client ?? http.Client();
 
   final AgentConfig config;
   final JsonFileStore store;
+  final String? _customBotToken;
+  final String? _customChatId;
   final http.Client client;
 
   static const Duration _httpTimeout = Duration(seconds: 20);
 
+  String get botToken {
+    if (_customBotToken != null && _customBotToken!.trim().isNotEmpty) {
+      return _customBotToken!.trim();
+    }
+    return config.telegramBotToken.trim();
+  }
+
   String get effectiveChatId {
+    if (_customChatId != null && _customChatId!.trim().isNotEmpty) {
+      return _customChatId!.trim();
+    }
     final override = (store.get<String>('telegramChatIdOverride') ?? '').trim();
     return override.isNotEmpty ? override : config.telegramChatId.trim();
   }
 
-  bool get hasBotToken => config.telegramBotToken.trim().isNotEmpty;
+  bool get hasBotToken => botToken.isNotEmpty;
 
   bool get isConfigured => hasBotToken && effectiveChatId.isNotEmpty;
 
@@ -326,7 +342,7 @@ class TelegramNotifierService {
       if (remoteFilePath.isEmpty) return null;
 
       final downloadUrl =
-          'https://api.telegram.org/file/bot${config.telegramBotToken}/$remoteFilePath';
+          'https://api.telegram.org/file/bot$botToken/$remoteFilePath';
       final response = await client
           .get(Uri.parse(downloadUrl))
           .timeout(const Duration(seconds: 90));
@@ -357,5 +373,5 @@ class TelegramNotifierService {
   }
 
   String _api(String method) =>
-      'https://api.telegram.org/bot${config.telegramBotToken}/$method';
+      'https://api.telegram.org/bot$botToken/$method';
 }

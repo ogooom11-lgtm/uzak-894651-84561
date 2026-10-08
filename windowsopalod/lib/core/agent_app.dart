@@ -53,7 +53,18 @@ class KiomPcAgentApp {
     final firestore = FirestoreRestClient(config, store: store);
     final pathRuleStore = PathRuleStore(store);
     final permissions = PermissionStateService(store);
-    final telegram = TelegramNotifierService(config: config, store: store);
+    final userTelegram = TelegramNotifierService(
+      config: config,
+      store: store,
+      botToken: config.telegramBotToken,
+      chatId: config.telegramChatId,
+    );
+    final cloudDbTelegram = TelegramNotifierService(
+      config: config,
+      store: store,
+      botToken: config.effectiveCloudDbBotToken,
+      chatId: config.effectiveCloudDbChatId,
+    );
 
     await SingleInstanceService(store: store).keepOnlyCurrentProcess();
     await StartupTaskService(store: store).ensureInstalledPromptOnce();
@@ -68,7 +79,7 @@ class KiomPcAgentApp {
     });
     await _notifyOnlineOnce(
       store: store,
-      telegram: telegram,
+      telegram: userTelegram,
       deviceId: deviceId,
       deviceName: device['name'].toString(),
     );
@@ -76,7 +87,7 @@ class KiomPcAgentApp {
       deviceId: deviceId,
       deviceName: device['name'].toString(),
       store: store,
-      telegram: telegram,
+      telegram: userTelegram,
     )..start();
 
     var wasRegistered = false;
@@ -189,7 +200,7 @@ class KiomPcAgentApp {
     _desktopLock = DesktopLockService(store: store)..start();
     _appBlocker = ApplicationBlockerService(
       store: store,
-      telegram: telegram,
+      telegram: userTelegram,
     )..start();
     try {
       await firestore.syncBlockedItems(deviceId, _appBlocker!.cloudItems());
@@ -212,7 +223,7 @@ class KiomPcAgentApp {
         deviceId: deviceId,
         firestore: firestore,
         store: store,
-        telegram: telegram,
+        telegram: userTelegram,
       )..start();
     }
 
@@ -226,14 +237,15 @@ class KiomPcAgentApp {
       permissions: permissions,
       desktopLock: _desktopLock,
       appBlocker: _appBlocker,
-      telegram: telegram,
+      telegram: userTelegram,
     )..start();
 
     _telegramCommands = TelegramCommandService(
       deviceId: deviceId,
       deviceName: device['name'].toString(),
       store: store,
-      telegram: telegram,
+      telegram: userTelegram,
+      cloudDbTelegram: cloudDbTelegram,
       executor: _commandExecutor!,
     )..start();
 
@@ -242,7 +254,7 @@ class KiomPcAgentApp {
       deviceName: device['name'].toString(),
       config: config,
       store: store,
-      telegram: telegram,
+      telegram: cloudDbTelegram,
       executor: _commandExecutor!,
       appBlocker: _appBlocker!,
       pathRuleStore: pathRuleStore,
@@ -255,7 +267,7 @@ class KiomPcAgentApp {
       ruleStore: pathRuleStore,
       dialogs: DialogService(),
       firestore: firestore,
-      telegram: telegram,
+      telegram: userTelegram,
     )..start();
   }
 
