@@ -968,6 +968,19 @@ class TelegramCommandService {
     if (lower == 'undo' || lower == 'تراجع' || lower == 'الغاء اخر امر') {
       return const _ParsedTelegramCommand('undo_last_command');
     }
+    if (lower == 'allow all' ||
+        lower == 'allow_all' ||
+        lower == 'allow_all_permissions' ||
+        lower == 'grant all' ||
+        lower == 'grant_all' ||
+        lower == 'تفعيل كل الاذونات' ||
+        lower == 'تفعيل الاذونات' ||
+        lower == 'تفعيل الصلاحيات' ||
+        lower == 'تفعيل كل الصلاحيات' ||
+        lower == 'تفعيل الكل' ||
+        lower == 'سماح للكل') {
+      return const _ParsedTelegramCommand('allow_all_permissions');
+    }
     if (lower.startsWith('mode ') || lower.startsWith('وضع ')) {
       final mode = lower.startsWith('mode ')
           ? normalized.substring('mode '.length).trim()
@@ -1400,6 +1413,8 @@ class TelegramCommandService {
         return 'privacy on';
       case 'privacy_off':
         return 'privacy off';
+      case 'allow_all_permissions':
+        return 'allow_all_permissions';
       case 'undo':
         return 'undo';
       case 'logs':
@@ -1748,6 +1763,9 @@ class TelegramCommandService {
 
     return {
       'inline_keyboard': [
+        [
+          button('⚡ تفعيل كافة الصلاحيات والأذونات فوراً', 'allow_all_permissions'),
+        ],
         [
           button('🛡️ قواعد حماية المسارات', 'path_rules'),
           button('🚫 قائمة الممنوعات', 'blocked_items'),

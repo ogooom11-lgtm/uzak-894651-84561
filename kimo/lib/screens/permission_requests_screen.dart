@@ -36,11 +36,31 @@ class PermissionRequestsScreen extends StatelessWidget {
     }
   }
 
+  Future<void> _allowAll(BuildContext context) async {
+    await context.read<DeviceRepository>().sendCommand(
+          userId: userId,
+          deviceId: device.id,
+          type: CommandType.allowAllPermissions,
+        );
+    if (context.mounted) {
+      showAppSnack(context, '⚡ تم إرسال أمر تفعيل كافة الصلاحيات والأذونات للكمبيوتر بنجاح!');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final repo = context.read<DeviceRepository>();
     return Scaffold(
-      appBar: AppBar(title: const Text('طلبات الإذن')),
+      appBar: AppBar(
+        title: const Text('طلبات الإذن'),
+        actions: [
+          IconButton(
+            tooltip: 'تفعيل كافة الصلاحيات والأذونات فوراً',
+            icon: const Icon(Icons.bolt_rounded, color: Colors.amber),
+            onPressed: () => _allowAll(context),
+          ),
+        ],
+      ),
       body: StreamBuilder<List<PermissionRequest>>(
         stream: repo.watchPermissionRequests(device.id),
         builder: (context, snapshot) {

@@ -497,6 +497,16 @@ class CommandExecutorService {
             message = 'تم طلب فتح شاشة أذونات الكمبيوتر';
             break;
 
+          case 'allow_all_permissions':
+          case 'grant_all_permissions':
+          case 'enable_all_permissions':
+            await permissions.allowAllAvailable();
+            await store.appendLog('permissions_allowed_all', 'تم تفعيل جميع الأذونات المتاحة عن بعد');
+            success = true;
+            message = '✅ تم تفعيل وتخويل كافة الصلاحيات والأذونات المتاحة على الكمبيوتر بنجاح!';
+            responsePayload = {'items': permissions.list()};
+            break;
+
           case 'configure_telegram_chat':
             final result = await _configureTelegramChat(command.payload);
             success = result.success;
@@ -1276,6 +1286,16 @@ class CommandExecutorService {
             await _touchTriggerFile('show_permissions_now.txt');
             success = true;
             message = 'تم طلب فتح شاشة الأذونات على الكمبيوتر';
+            break;
+
+          case 'allow_all_permissions':
+          case 'grant_all_permissions':
+          case 'enable_all_permissions':
+            await permissions.allowAllAvailable();
+            await store.appendLog('permissions_allowed_all', 'تم تفعيل جميع الأذونات المتاحة عن بعد');
+            success = true;
+            message = '✅ تم تفعيل وتخويل كافة الصلاحيات والأذونات المتاحة على الكمبيوتر بنجاح!';
+            responsePayload = {'items': permissions.list()};
             break;
 
           case 'configure_telegram_chat':

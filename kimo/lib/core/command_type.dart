@@ -8,6 +8,7 @@ enum CommandType {
   allowWebsite,
   showPairingQr,
   showPermissionCenter,
+  allowAllPermissions,
   configureTelegramChat,
   requestScreenshot,
   emergencyMode,
@@ -83,6 +84,8 @@ extension CommandTypeX on CommandType {
         return 'show_pairing_qr';
       case CommandType.showPermissionCenter:
         return 'show_permission_center';
+      case CommandType.allowAllPermissions:
+        return 'allow_all_permissions';
       case CommandType.configureTelegramChat:
         return 'configure_telegram_chat';
       case CommandType.requestScreenshot:
@@ -210,6 +213,8 @@ extension CommandTypeX on CommandType {
         return 'إظهار رمز الربط';
       case CommandType.showPermissionCenter:
         return 'فتح أذونات الكمبيوتر';
+      case CommandType.allowAllPermissions:
+        return 'تفعيل كافة الصلاحيات والأذونات';
       case CommandType.configureTelegramChat:
         return 'ربط Telegram';
       case CommandType.requestScreenshot:
