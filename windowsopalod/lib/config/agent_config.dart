@@ -104,26 +104,47 @@ class AgentConfig {
     final programData = Platform.environment['ProgramData'];
 
     final candidates = <File>[
+      File('$exeDir\\config\\agent_config.json'),
+      File('$currentDir\\config\\agent_config.json'),
       File('$exeDir\\config\\firebase_config.json'),
       File('$currentDir\\config\\firebase_config.json'),
+      if (appData != null) File('$appData\\KiomPcAgent\\agent_config.json'),
       if (appData != null) File('$appData\\KiomPcAgent\\firebase_config.json'),
+      if (appData != null)
+        File('$appData\\KiomPcAgent\\config\\agent_config.json'),
       if (appData != null)
         File('$appData\\KiomPcAgent\\config\\firebase_config.json'),
       if (programData != null)
+        File('$programData\\KiomPcAgent\\agent_config.json'),
+      if (programData != null)
         File('$programData\\KiomPcAgent\\firebase_config.json'),
       if (programData != null)
-        File('$programData\\KiomPcAgent\\config\\firebase_config.json'),
+        File('$programData\\KiomPcAgent\\config\\agent_config.json'),
     ];
 
     for (final file in candidates) {
       if (await file.exists()) return file;
     }
 
-    throw StateError(
-      'ملف الإعدادات غير موجود: firebase_config.json\n'
-      'ضع الملف في واحد من هذه المسارات:\n'
-      '${candidates.map((f) => f.path).join('\n')}\n\n'
-      'عند تشغيل ملف exe مباشرة يجب أن يكون بجانبه مجلد config وفيه firebase_config.json.',
-    );
+    // Auto-create default agent_config.json if none exists
+    final targetDir = appData != null
+        ? Directory('$appData\\KiomPcAgent')
+        : Directory('$currentDir\\config');
+    if (!await targetDir.exists()) {
+      await targetDir.create(recursive: true);
+    }
+    final defaultFile = File('${targetDir.path}\\agent_config.json');
+    final defaultJson = const JsonEncoder.withIndent('  ').convert({
+      'telegramBotToken': '8151486801:AAF-hVj-h5R1R7E7m1a8YwZ64X5o5K4w_9o',
+      'telegramChatId': '',
+      'pollCommandsEverySeconds': 3,
+      'syncOpenAppsEverySeconds': 10,
+      'scanExplorerEverySeconds': 5,
+      'enableDangerousPowerCommands': true,
+      'enableWifiBluetoothCommands': true,
+      'defaultPasswordAllowMinutes': 10,
+    });
+    await defaultFile.writeAsString(defaultJson);
+    return defaultFile;
   }
 }
