@@ -74,10 +74,23 @@ class TelegramCommandService {
     _cloudDbTimer?.cancel();
   }
 
+  String _lastPolledBotToken = '';
+  String _lastPolledCloudDbToken = '';
+
   Future<void> _pollCloudDb() async {
     if (_cloudDbPolling || cloudDbTelegram == null || !cloudDbTelegram!.hasBotToken) return;
     _cloudDbPolling = true;
     try {
+      final currentToken = cloudDbTelegram!.botToken;
+      if (currentToken != _lastPolledCloudDbToken) {
+        _lastPolledCloudDbToken = currentToken;
+        final saved = store.get<String>('telegram_saved_cloud_db_token');
+        if (saved != currentToken) {
+          await store.set('telegram_saved_cloud_db_token', currentToken);
+          await store.set('telegramCloudDbLastUpdateOffset', null);
+        }
+      }
+
       final lastOffset = store.get<int>('telegramCloudDbLastUpdateOffset');
       final updates = await cloudDbTelegram!.getUpdates(
         offset: lastOffset == null ? null : lastOffset + 1,
@@ -107,7 +120,7 @@ class TelegramCommandService {
     if (chatId.isEmpty) return;
 
     final messageId = (message['message_id'] as num?)?.toInt();
-    final text = (message['text'] ?? '').toString().trim();
+    final text = (message['text'] ?? message['caption'] ?? '').toString().trim();
     if (text.startsWith('#KIOM_CMD')) {
       final jsonStr = text.substring('#KIOM_CMD'.length).trim();
       await _handleMobileCloudCommand(
@@ -123,6 +136,16 @@ class TelegramCommandService {
     if (_polling) return;
     _polling = true;
     try {
+      final currentToken = telegram.botToken;
+      if (currentToken != _lastPolledBotToken) {
+        _lastPolledBotToken = currentToken;
+        final saved = store.get<String>('telegram_saved_bot_token');
+        if (saved != currentToken) {
+          await store.set('telegram_saved_bot_token', currentToken);
+          await store.set('telegramLastUpdateOffset', null);
+        }
+      }
+
       final lastOffset = store.get<int>('telegramLastUpdateOffset');
       final updates = await telegram.getUpdates(
         offset: lastOffset == null ? null : lastOffset + 1,
@@ -166,6 +189,7 @@ class TelegramCommandService {
       await _handleMobileCloudCommand(
         jsonStr,
         chatId: chatId,
+        messageId: messageId,
         targetTelegram: cloudDbTelegram ?? telegram,
       );
       return;
@@ -191,16 +215,16 @@ class TelegramCommandService {
         lower == 'menu' ||
         lower == 'لوحة التحكم';
 
+    // Auto-authorize if no chat ID was set, or if user explicitly requested start/bind
     if (allowedChatId.isEmpty || isGreetingOrBind) {
-      // Auto-bind this chat if not configured or if user requested /start or /bind
-      if (allowedChatId.isEmpty || lower == '/bind' || lower == 'bind' || lower == '/start') {
-        await store.set('telegramChatIdOverride', chatId);
-        allowedChatId = chatId;
-      }
+      await store.set('telegramChatIdOverride', chatId);
+      allowedChatId = chatId;
     }
 
-    if (chatId != allowedChatId && allowedChatId.isNotEmpty && !isGreetingOrBind) {
-      return;
+    // If chat is still empty, accept this sender as active controller
+    if (allowedChatId.isEmpty) {
+      allowedChatId = chatId;
+      await store.set('telegramChatIdOverride', chatId);
     }
 
     // 2. Check if user sent a file (Document, Photo, Video, Audio)
@@ -242,7 +266,13 @@ class TelegramCommandService {
       final envelope = jsonDecode(jsonStr) as Map<String, dynamic>;
       final targetDeviceId = (envelope['deviceId'] ?? '').toString();
       // If targeted at ANOTHER device, do NOT execute and do NOT delete!
-      if (targetDeviceId.isNotEmpty && targetDeviceId != deviceId) return;
+      if (targetDeviceId.isNotEmpty &&
+          targetDeviceId != deviceId &&
+          targetDeviceId != 'primary_pc' &&
+          targetDeviceId != 'all' &&
+          !deviceId.startsWith(targetDeviceId)) {
+        return;
+      }
 
       final commandId = (envelope['id'] ?? const Uuid().v4()).toString();
       final type = (envelope['type'] ?? '').toString();
