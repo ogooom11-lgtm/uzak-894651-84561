@@ -275,7 +275,7 @@ class TelegramCommandService {
       return;
     }
 
-    // 1. Confirmation callbacks: confirm_yes:<token> or confirm_no:<token>
+    // 1. Confirmation callbacks
     if (data.startsWith('confirm_yes:')) {
       final token = data.substring('confirm_yes:'.length);
       final pending = _pendingConfirmations.remove(token);
@@ -305,7 +305,7 @@ class TelegramCommandService {
       return;
     }
 
-    // 2. Navigation menus
+    // 2. Navigation sub-menus
     await telegram.answerCallbackQuery(id, text: 'تم الاختيار');
 
     if (data == 'menu_main' || data == 'menu') {
@@ -319,9 +319,9 @@ class TelegramCommandService {
     }
     if (data == 'menu_files') {
       await telegram.sendMessage(
-        '📁 <b>إدارة الملفات بالكمبيوتر:</b>\n'
-        'اختر مجلداً لعرض محتوياته أو إرسال ملف، أو اكتب أمر مثل:\n'
-        '• <code>/get C:\\Users\\...\\file.pdf</code> لإرسال ملف لتليجرام\n'
+        '📁 <b>إدارة الملفات بالكمبيوتر:</b>\n\n'
+        '• تصفح الأقراص والمجلدات\n'
+        '• <code>/get C:\\path\\file.pdf</code> لإرسال ملف لتليجرام\n'
         '• <code>/search تقرير</code> للبحث عن ملفات\n'
         '• أو أرسل أي ملف للمحادثة وسيتم حفظه في الكمبيوتر فوراً!',
         chatId: chatId,
@@ -330,9 +330,29 @@ class TelegramCommandService {
       );
       return;
     }
+    if (data == 'menu_apps') {
+      await telegram.sendMessage(
+        '👁️ <b>إدارة البرامج والتطبيقات:</b>\n'
+        'عرض التطبيقات الشغالة، إغلاق البرامج، أو منع المواقع والتطبيقات:',
+        chatId: chatId,
+        replyToMessageId: messageId,
+        replyMarkup: _appsInlineMenu(),
+      );
+      return;
+    }
+    if (data == 'menu_power') {
+      await telegram.sendMessage(
+        '🔒 <b>الطاقة والقفل والجدولة:</b>\n'
+        'قفل الشاشة، إغلاق، إعادة التشغيل، أو تسجيل الخروج:',
+        chatId: chatId,
+        replyToMessageId: messageId,
+        replyMarkup: _powerInlineMenu(),
+      );
+      return;
+    }
     if (data == 'menu_modes') {
       await telegram.sendMessage(
-        '🎛️ <b>الأوضاع الجاهزة السريعة:</b>\nاختر الوضع المطلوب لتطبيقه فوراً على الكمبيوتر:',
+        '🎛️ <b>الأوضاع الذكية الجاهزة:</b>\nاختر الوضع المطلوب لتطبيقه فوراً على الكمبيوتر:',
         chatId: chatId,
         replyToMessageId: messageId,
         replyMarkup: _modesInlineMenu(),
@@ -341,10 +361,37 @@ class TelegramCommandService {
     }
     if (data == 'menu_network') {
       await telegram.sendMessage(
-        '🌐 <b>التحكم بالشبكة والصوت:</b>\nتحكم بالاتصال ومستوى الصوت والبلوتوث:',
+        '🌐 <b>التحكم بالشبكة والبلوتوث:</b>\nتشغيل وإيقاف WiFi والإنترنت والبلوتوث:',
         chatId: chatId,
         replyToMessageId: messageId,
         replyMarkup: _networkInlineMenu(),
+      );
+      return;
+    }
+    if (data == 'menu_audio') {
+      await telegram.sendMessage(
+        '🔊 <b>التحكم بمستوى الصوت:</b>\nرفع، خفض، كتم، أو تحديد النسبة:',
+        chatId: chatId,
+        replyToMessageId: messageId,
+        replyMarkup: _audioInlineMenu(),
+      );
+      return;
+    }
+    if (data == 'menu_insights') {
+      await telegram.sendMessage(
+        '📊 <b>السجلات والتحليلات والصحة:</b>\nاختر التقرير المطلوب:',
+        chatId: chatId,
+        replyToMessageId: messageId,
+        replyMarkup: _insightsInlineMenu(),
+      );
+      return;
+    }
+    if (data == 'menu_security') {
+      await telegram.sendMessage(
+        '🛡️ <b>الحماية والأذونات والتثبيت:</b>\nإدارة قواعد الحماية وطلبات الإذن والتثبيت:',
+        chatId: chatId,
+        replyToMessageId: messageId,
+        replyMarkup: _securityInlineMenu(),
       );
       return;
     }
@@ -367,6 +414,21 @@ class TelegramCommandService {
     if (data.startsWith('get_file:')) {
       final path = data.substring('get_file:'.length);
       await _handleExecutableText('send_file $path', chatId: chatId, replyToMessageId: messageId);
+      return;
+    }
+    if (data.startsWith('close_app:')) {
+      final target = data.substring('close_app:'.length);
+      await _handleExecutableText('close $target', chatId: chatId, replyToMessageId: messageId);
+      return;
+    }
+    if (data.startsWith('allow_app:')) {
+      final target = data.substring('allow_app:'.length);
+      await _handleExecutableText('allow app $target', chatId: chatId, replyToMessageId: messageId);
+      return;
+    }
+    if (data.startsWith('allow_site:')) {
+      final target = data.substring('allow_site:'.length);
+      await _handleExecutableText('allow site $target', chatId: chatId, replyToMessageId: messageId);
       return;
     }
 
@@ -458,11 +520,14 @@ class TelegramCommandService {
       payload: parsed.payload,
     );
 
+    final formattedText = _formatResult(parsed.type, result);
+    final inlineMarkup = _resultInlineButtons(parsed.type, result.payload);
+
     await telegram.sendMessage(
-      _formatResult(parsed.type, result),
+      formattedText,
       chatId: chatId,
       replyToMessageId: replyToMessageId,
-      replyMarkup: _dashboardInlineMenu(),
+      replyMarkup: inlineMarkup ?? _dashboardInlineMenu(),
     );
   }
 
@@ -519,8 +584,8 @@ class TelegramCommandService {
         lower == 'الاوامر' ||
         lower == 'مساعدة' ||
         lower == '/app' ||
-        lower == 'app') {
-      // Remove any old dark reply keyboard permanently
+        lower == 'app' ||
+        lower == 'لوحة التحكم') {
       unawaited(telegram.removeReplyKeyboard(chatId: chatId));
       await telegram.sendMessage(
         _dashboardText(),
@@ -590,7 +655,7 @@ class TelegramCommandService {
         first == 'download' ||
         first == 'تحميل' ||
         first == 'ارسل_ملف' ||
-        lower.startsWith('send ') && !lower.startsWith('send bt')) {
+        (lower.startsWith('send ') && !lower.startsWith('send bt') && !lower.startsWith('send bluetooth'))) {
       final path = rest.isNotEmpty
           ? rest
           : (lower.startsWith('send ') ? normalized.substring(5).trim() : '');
@@ -599,6 +664,39 @@ class TelegramCommandService {
       }
     }
 
+    // Apps & Processes
+    if (lower == 'apps' ||
+        lower == 'open apps' ||
+        lower == 'openapps' ||
+        lower == 'البرامج' ||
+        lower == 'البرامج المفتوحة' ||
+        lower == 'التطبيقات المفتوحة') {
+      return const _ParsedTelegramCommand('list_open_apps');
+    }
+    if (lower == 'installed' ||
+        lower == 'programs' ||
+        lower == 'البرامج المثبتة' ||
+        lower == 'التطبيقات المثبتة') {
+      return const _ParsedTelegramCommand('list_installed_apps');
+    }
+    if (lower == 'blocked' ||
+        lower == 'الممنوعات' ||
+        lower == 'قائمة المنع') {
+      return const _ParsedTelegramCommand('list_blocked_items');
+    }
+    if (lower == 'rules' ||
+        lower == 'قواعد الحماية' ||
+        lower == 'حماية المسارات') {
+      return const _ParsedTelegramCommand('list_path_rules');
+    }
+    if (lower == 'insights' ||
+        lower == 'التحليلات' ||
+        lower == 'ملخص' ||
+        lower == 'تقرير') {
+      return const _ParsedTelegramCommand('smart_insights');
+    }
+
+    // Basic Controls & Status
     if (lower == 'status' ||
         lower == 'متصل' ||
         lower == 'فحص' ||
@@ -634,6 +732,8 @@ class TelegramCommandService {
           : normalized.substring('وضع '.length).trim();
       return _ParsedTelegramCommand('apply_preset_mode', {'mode': mode});
     }
+
+    // Lock & Power Commands
     if (first == 'lock' || first == 'قفل') {
       final minutes = int.tryParse(rest);
       return _ParsedTelegramCommand(
@@ -653,16 +753,18 @@ class TelegramCommandService {
     if (lower == 'logout' || lower == 'تسجيل خروج') {
       return const _ParsedTelegramCommand('logout_user');
     }
+
+    // Volume Commands
     if (first == 'volume' || first == 'vol' || first == 'صوت') {
       final volume = int.tryParse(rest);
       if (volume != null) {
         return _ParsedTelegramCommand('set_volume', {'volume': volume});
       }
     }
-    if (lower == 'volup' || lower == 'volume up' || lower == 'رفع الصوت') {
+    if (lower == 'volup' || lower == 'vol+' || lower == 'volume up' || lower == 'رفع الصوت') {
       return const _ParsedTelegramCommand('volume_up');
     }
-    if (lower == 'voldown' || lower == 'volume down' || lower == 'خفض الصوت') {
+    if (lower == 'voldown' || lower == 'vol-' || lower == 'volume down' || lower == 'خفض الصوت') {
       return const _ParsedTelegramCommand('volume_down');
     }
     if (lower == 'mute' || lower == 'كتم') {
@@ -671,6 +773,8 @@ class TelegramCommandService {
     if (lower == 'unmute' || lower == 'الغاء كتم') {
       return const _ParsedTelegramCommand('unmute_volume');
     }
+
+    // WiFi & Internet Commands
     if ((first == 'wifi' && rest.toLowerCase() == 'on') ||
         lower == 'تشغيل الواي فاي' ||
         lower == 'واي فاي تشغيل') {
@@ -694,6 +798,8 @@ class TelegramCommandService {
         lower == 'تشغيل الإنترنت') {
       return const _ParsedTelegramCommand('internet_on');
     }
+
+    // Bluetooth Commands
     if ((first == 'bluetooth' || first == 'bt') && rest.toLowerCase() == 'on') {
       return const _ParsedTelegramCommand('bluetooth_on');
     }
@@ -705,6 +811,88 @@ class TelegramCommandService {
         (rest.toLowerCase() == 'devices' || rest.toLowerCase() == 'list')) {
       return const _ParsedTelegramCommand('list_bluetooth_devices');
     }
+    if ((first == 'bluetooth' || first == 'bt') &&
+        rest.toLowerCase().startsWith('send ')) {
+      final path = rest.substring('send '.length).trim();
+      return _ParsedTelegramCommand('send_bluetooth_file', {'path': path});
+    }
+    if ((first == 'bluetooth' || first == 'bt') &&
+        rest.toLowerCase().startsWith('receive')) {
+      final savePath = rest.substring('receive'.length).trim();
+      return _ParsedTelegramCommand('open_bluetooth_receive',
+          savePath.isEmpty ? const {} : {'savePath': savePath});
+    }
+
+    // App & Website Blocking / Permissions
+    if (first == 'close' || first == 'kill' || first == 'اغلق' || first == 'إغلاق_تطبيق') {
+      return _ParsedTelegramCommand('close_application', {'target': rest});
+    }
+    if (lower.startsWith('block app ') || lower.startsWith('منع تطبيق ')) {
+      final target = lower.startsWith('block app ')
+          ? normalized.substring('block app '.length).trim()
+          : normalized.substring('منع تطبيق '.length).trim();
+      return _ParsedTelegramCommand('block_application', {'target': target});
+    }
+    if (lower.startsWith('allow app ') || lower.startsWith('سماح لتطبيق ')) {
+      final target = lower.startsWith('allow app ')
+          ? normalized.substring('allow app '.length).trim()
+          : normalized.substring('سماح لتطبيق '.length).trim();
+      return _ParsedTelegramCommand('allow_application', {'target': target});
+    }
+    if (lower.startsWith('block site ') || lower.startsWith('حظر موقع ')) {
+      final target = lower.startsWith('block site ')
+          ? normalized.substring('block site '.length).trim()
+          : normalized.substring('حظر موقع '.length).trim();
+      return _ParsedTelegramCommand('block_website', {'domain': target});
+    }
+    if (lower.startsWith('allow site ') || lower.startsWith('سماح لموقع ')) {
+      final target = lower.startsWith('allow site ')
+          ? normalized.substring('allow site '.length).trim()
+          : normalized.substring('سماح لموقع '.length).trim();
+      return _ParsedTelegramCommand('allow_website', {'domain': target});
+    }
+
+    // Files & Explorer Commands
+    if (lower.startsWith('browse ') || lower.startsWith('تصفح ')) {
+      final path = lower.startsWith('browse ')
+          ? normalized.substring('browse '.length).trim()
+          : normalized.substring('تصفح '.length).trim();
+      return _ParsedTelegramCommand('browse_path', {'path': path});
+    }
+    if (lower.startsWith('search ') || lower.startsWith('find ') || lower.startsWith('بحث ')) {
+      final query = lower.startsWith('search ')
+          ? normalized.substring('search '.length).trim()
+          : lower.startsWith('find ')
+              ? normalized.substring('find '.length).trim()
+              : normalized.substring('بحث '.length).trim();
+      return _ParsedTelegramCommand('search_files', {'query': query, 'rootPath': 'home'});
+    }
+    if (lower.startsWith('open ') || lower.startsWith('افتح ')) {
+      final path = lower.startsWith('open ')
+          ? normalized.substring('open '.length).trim()
+          : normalized.substring('افتح '.length).trim();
+      return _ParsedTelegramCommand('open_path', {'path': path});
+    }
+    if (lower.startsWith('delete ') || lower.startsWith('حذف ')) {
+      final path = lower.startsWith('delete ')
+          ? normalized.substring('delete '.length).trim()
+          : normalized.substring('حذف '.length).trim();
+      return _ParsedTelegramCommand('delete_path', {'path': path});
+    }
+    if (lower.startsWith('hide ') || lower.startsWith('إخفاء ')) {
+      final path = lower.startsWith('hide ')
+          ? normalized.substring('hide '.length).trim()
+          : normalized.substring('إخفاء '.length).trim();
+      return _ParsedTelegramCommand('hide_path', {'path': path});
+    }
+    if (lower.startsWith('unhide ') || lower.startsWith('إظهار ')) {
+      final path = lower.startsWith('unhide ')
+          ? normalized.substring('unhide '.length).trim()
+          : normalized.substring('إظهار '.length).trim();
+      return _ParsedTelegramCommand('unhide_path', {'path': path});
+    }
+
+    // Messages & Dialogs
     if (lower.startsWith('message ') ||
         lower.startsWith('msg ') ||
         lower.startsWith('رسالة ')) {
@@ -716,43 +904,8 @@ class TelegramCommandService {
       final message = normalized.substring(prefix.length).trim();
       return _ParsedTelegramCommand('show_message', {'message': message});
     }
-    if (first == 'close' || first == 'اغلق' || first == 'إغلاق_تطبيق') {
-      return _ParsedTelegramCommand('close_application', {'target': rest});
-    }
-    if (lower.startsWith('block app ')) {
-      final target = normalized.substring('block app '.length).trim();
-      return _ParsedTelegramCommand('block_application', {'target': target});
-    }
-    if (lower.startsWith('allow app ')) {
-      final target = normalized.substring('allow app '.length).trim();
-      return _ParsedTelegramCommand('allow_application', {'target': target});
-    }
-    if (lower.startsWith('block site ')) {
-      final target = normalized.substring('block site '.length).trim();
-      return _ParsedTelegramCommand('block_website', {'domain': target});
-    }
-    if (lower.startsWith('allow site ')) {
-      final target = normalized.substring('allow site '.length).trim();
-      return _ParsedTelegramCommand('allow_website', {'domain': target});
-    }
-    if (lower.startsWith('browse ') || lower.startsWith('تصفح ')) {
-      final path = lower.startsWith('browse ')
-          ? normalized.substring('browse '.length).trim()
-          : normalized.substring('تصفح '.length).trim();
-      return _ParsedTelegramCommand('browse_path', {'path': path});
-    }
-    if (lower.startsWith('search ') || lower.startsWith('بحث ')) {
-      final query = lower.startsWith('search ')
-          ? normalized.substring('search '.length).trim()
-          : normalized.substring('بحث '.length).trim();
-      return _ParsedTelegramCommand('search_files', {'query': query, 'rootPath': 'home'});
-    }
-    if (lower.startsWith('open ') || lower.startsWith('افتح ')) {
-      final path = lower.startsWith('open ')
-          ? normalized.substring('open '.length).trim()
-          : normalized.substring('افتح '.length).trim();
-      return _ParsedTelegramCommand('open_path', {'path': path});
-    }
+
+    // System Utilities
     if (lower == 'logs' || lower == 'سجلات' || lower == 'السجلات') {
       return const _ParsedTelegramCommand('request_logs');
     }
@@ -765,7 +918,7 @@ class TelegramCommandService {
         lower == 'الأذونات') {
       return const _ParsedTelegramCommand('show_permission_center');
     }
-    if (lower == 'stop commands' || lower == 'ايقاف الاوامر') {
+    if (lower == 'stop commands' || lower == 'ايقاف الاوامر' || lower == '/stop') {
       return const _ParsedTelegramCommand('stop_all_commands');
     }
 
@@ -806,19 +959,140 @@ class TelegramCommandService {
 
   String _briefPayload(String type, Map<String, dynamic> payload) {
     if (payload.isEmpty) return '';
+
+    // File lists
     if (type == 'browse_path' || type == 'search_files') {
       final items = (payload['items'] as List?) ?? const [];
-      final lines = items.take(15).map((item) {
+      final lines = items.take(12).map((item) {
         if (item is! Map) return item.toString();
         final name = (item['name'] ?? '').toString();
         final path = (item['path'] ?? '').toString();
         final isDir = item['type'] == 'directory' || item['type'] == 'drive';
         final icon = isDir ? '📁' : '📄';
-        return '$icon $name\n   <code>/get $path</code>';
+        return '$icon <b>$name</b>\n   <code>/get $path</code>';
       }).join('\n');
       return lines;
     }
+
+    // Open apps
+    if (type == 'list_open_apps' || type == 'open_apps') {
+      final apps = (payload['apps'] as List?) ?? const [];
+      final lines = apps.take(15).map((app) {
+        if (app is! Map) return app.toString();
+        final name = (app['appName'] ?? app['name'] ?? 'App').toString();
+        final pid = (app['processId'] ?? app['pid'] ?? '').toString();
+        final title = (app['windowTitle'] ?? app['title'] ?? '').toString();
+        return '🔹 <b>$name</b> (PID: <code>$pid</code>)\n   ${title.isNotEmpty ? title : ''}';
+      }).join('\n');
+      return lines;
+    }
+
+    // Installed apps
+    if (type == 'list_installed_apps' || type == 'installed_apps') {
+      final apps = (payload['apps'] as List?) ?? const [];
+      final lines = apps.take(15).map((app) {
+        if (app is! Map) return app.toString();
+        final name = (app['name'] ?? app['displayName'] ?? 'App').toString();
+        final version = (app['version'] ?? '').toString();
+        return '📦 <b>$name</b> ${version.isNotEmpty ? '($version)' : ''}';
+      }).join('\n');
+      return lines;
+    }
+
+    // Blocked items
+    if (type == 'list_blocked_items' || type == 'blocked_items') {
+      final items = (payload['items'] as List?) ?? const [];
+      final lines = items.map((item) {
+        if (item is! Map) return item.toString();
+        final target = (item['target'] ?? item['domain'] ?? '').toString();
+        final type = (item['type'] ?? 'app').toString();
+        final icon = type == 'site' ? '🌐' : '🚫';
+        return '$icon <b>$target</b> ($type)';
+      }).join('\n');
+      return lines.isNotEmpty ? lines : 'لا توجد عناصر ممنوعة حالياً.';
+    }
+
+    // Path rules
+    if (type == 'list_path_rules' || type == 'path_rules') {
+      final rules = (payload['rules'] as List?) ?? const [];
+      final lines = rules.map((r) {
+        if (r is! Map) return r.toString();
+        final path = (r['path'] ?? '').toString();
+        final lockType = (r['lockType'] ?? 'permissionRequired').toString();
+        return '🛡️ <b>$path</b> ($lockType)';
+      }).join('\n');
+      return lines.isNotEmpty ? lines : 'لا توجد قواعد حماية مسارات حالياً.';
+    }
+
+    // Smart Insights
+    if (type == 'smart_insights') {
+      final open = payload['openAppsCount'] ?? 0;
+      final installed = payload['installedAppsCount'] ?? 0;
+      final blocked = payload['blockedItemsCount'] ?? 0;
+      final rules = payload['pathRulesCount'] ?? 0;
+      final logs = payload['logsCount'] ?? 0;
+      return '📊 <b>إحصائيات النظام السريعة:</b>\n'
+          '• البرامج الشغالة الآن: $open\n'
+          '• إجمالي البرامج المثبتة: $installed\n'
+          '• العناصر والمواقع الممنوعة: $blocked\n'
+          '• قواعد حماية المسارات: $rules\n'
+          '• إجمالي السجلات المسجلة: $logs';
+    }
+
     return '';
+  }
+
+  Map<String, dynamic>? _resultInlineButtons(String type, Map<String, dynamic> payload) {
+    if (type == 'browse_path' || type == 'search_files') {
+      final items = (payload['items'] as List?) ?? const [];
+      final fileButtons = <List<Map<String, String>>>[];
+      for (final item in items.take(4)) {
+        if (item is! Map) continue;
+        final name = (item['name'] ?? '').toString();
+        final path = (item['path'] ?? '').toString();
+        final isDir = item['type'] == 'directory' || item['type'] == 'drive';
+        if (!isDir && path.isNotEmpty) {
+          fileButtons.add([
+            {
+              'text': '⬇️ تحميل: ${name.length > 18 ? name.substring(0, 18) + '...' : name}',
+              'callback_data': 'get_file:$path',
+            },
+            {
+              'text': '📂 فتح',
+              'callback_data': 'exec_open:$path',
+            },
+          ]);
+        }
+      }
+      fileButtons.add([
+        {'text': '🔙 القائمة الرئيسية', 'callback_data': 'menu_main'},
+      ]);
+      return {'inline_keyboard': fileButtons};
+    }
+
+    if (type == 'list_open_apps' || type == 'open_apps') {
+      final apps = (payload['apps'] as List?) ?? const [];
+      final buttons = <List<Map<String, String>>>[];
+      for (final app in apps.take(4)) {
+        if (app is! Map) continue;
+        final name = (app['appName'] ?? app['name'] ?? 'App').toString();
+        final pid = (app['processId'] ?? app['pid'] ?? '').toString();
+        if (name.isNotEmpty) {
+          buttons.add([
+            {
+              'text': '❌ إغلاق: $name',
+              'callback_data': 'close_app:${pid.isNotEmpty ? pid : name}',
+            },
+          ]);
+        }
+      }
+      buttons.add([
+        {'text': '🔙 القائمة الرئيسية', 'callback_data': 'menu_main'},
+      ]);
+      return {'inline_keyboard': buttons};
+    }
+
+    return null;
   }
 
   String _truncate(String text, {int max = 3800}) {
@@ -847,8 +1121,16 @@ class TelegramCommandService {
         return 'emergency';
       case 'lock':
         return 'lock';
+      case 'lock_30':
+        return 'lock 30';
       case 'unlock':
         return 'unlock';
+      case 'shutdown':
+        return 'shutdown';
+      case 'restart':
+        return 'restart';
+      case 'logout':
+        return 'logout';
       case 'mode_study':
         return 'mode study';
       case 'mode_work':
@@ -869,6 +1151,10 @@ class TelegramCommandService {
         return 'wifi on';
       case 'wifi_off':
         return 'wifi off';
+      case 'net_off':
+        return 'internet off';
+      case 'net_on':
+        return 'internet on';
       case 'vol_up':
         return 'volup';
       case 'vol_down':
@@ -877,16 +1163,44 @@ class TelegramCommandService {
         return 'mute';
       case 'vol_unmute':
         return 'unmute';
+      case 'vol_25':
+        return 'volume 25';
+      case 'vol_50':
+        return 'volume 50';
+      case 'vol_75':
+        return 'volume 75';
+      case 'vol_100':
+        return 'volume 100';
       case 'bt_on':
         return 'bluetooth on';
       case 'bt_off':
         return 'bluetooth off';
+      case 'bt_devices':
+        return 'bluetooth devices';
+      case 'open_apps':
+        return 'open_apps';
+      case 'installed_apps':
+        return 'installed_apps';
+      case 'blocked_items':
+        return 'blocked_items';
+      case 'path_rules':
+        return 'path_rules';
+      case 'smart_insights':
+        return 'smart_insights';
+      case 'qr':
+        return 'qr';
+      case 'permissions':
+        return 'permissions';
       case 'browse_downloads':
         return 'browse ${_getKnownFolder('Downloads')}';
       case 'browse_desktop':
         return 'browse ${_getKnownFolder('Desktop')}';
       case 'browse_documents':
         return 'browse ${_getKnownFolder('Documents')}';
+      case 'browse_c':
+        return r'browse C:\';
+      case 'browse_d':
+        return r'browse D:\';
       case 'browse_roots':
         return 'browse roots';
       default:
@@ -897,7 +1211,7 @@ class TelegramCommandService {
   String _dashboardText() {
     return '⚡ <b>لوحة تحكم KIOM التفاعلية بالكمبيوتر:</b>\n'
         '🖥️ <b>الجهاز:</b> $deviceName ($deviceId)\n\n'
-        'اختر أحد الإجراءات السريعة أدناه أو أرسل أي ملف ليتم حفظه بالكمبيوتر فوراً:';
+        'اختر أحد الأقسام أدناه للتحكم الشامل، أو أرسل أي ملف للمحادثة ليتم حفظه بالكمبيوتر فوراً:';
   }
 
   Map<String, dynamic> _dashboardInlineMenu() {
@@ -911,21 +1225,26 @@ class TelegramCommandService {
         [
           button('📸 لقطة شاشة', 'screenshot'),
           button('📊 صحة الجهاز', 'health'),
-          button('⚡ طوارئ', 'emergency'),
+          button('⚡ وضع الطوارئ', 'emergency'),
         ],
         [
-          button('📁 إدارة الملفات', 'menu_files'),
-          button('🔒 قفل الشاشة', 'lock'),
-          button('🛡️ وضع الخصوصية', 'privacy_on'),
+          button('📁 مدير الملفات', 'menu_files'),
+          button('👁️ البرامج والتطبيقات', 'menu_apps'),
+          button('🔒 قفل وطاقة', 'menu_power'),
         ],
         [
-          button('🎛️ الأوضاع الجاهزة', 'menu_modes'),
-          button('🌐 الشبكة والصوت', 'menu_network'),
+          button('🎛️ الأوضاع الذكية', 'menu_modes'),
+          button('🌐 الشبكة والبلوتوث', 'menu_network'),
+          button('🔊 الصوت', 'menu_audio'),
+        ],
+        [
+          button('📈 السجلات والتحليلات', 'menu_insights'),
+          button('🛡️ الأمان والحماية', 'menu_security'),
         ],
         [
           button('↩️ تراجع عن أمر', 'undo'),
-          button('📜 السجلات', 'logs'),
-          button('ℹ️ مساعدة', 'menu_help'),
+          button('🔑 رمز QR', 'qr'),
+          button('📖 دليل الأوامر', 'menu_help'),
         ],
       ],
     };
@@ -940,12 +1259,67 @@ class TelegramCommandService {
     return {
       'inline_keyboard': [
         [
-          button('📥 التنزيلات (Downloads)', 'browse_downloads'),
+          button('📥 مجلد التنزيلات', 'browse_downloads'),
           button('🖥️ سطح المكتب', 'browse_desktop'),
         ],
         [
           button('📁 المستندات', 'browse_documents'),
-          button('💾 الأقراص C / D', 'browse_roots'),
+          button('💾 القرص C:\\', 'browse_c'),
+          button('💾 القرص D:\\', 'browse_d'),
+        ],
+        [
+          button('💾 جميع الأقراص', 'browse_roots'),
+        ],
+        [
+          button('🔙 العودة للوحة الرئيسية', 'menu_main'),
+        ],
+      ],
+    };
+  }
+
+  Map<String, dynamic> _appsInlineMenu() {
+    Map<String, String> button(String text, String data) => {
+          'text': text,
+          'callback_data': data,
+        };
+
+    return {
+      'inline_keyboard': [
+        [
+          button('👁️ التطبيقات المفتوحة الحالية', 'open_apps'),
+        ],
+        [
+          button('📦 البرامج المثبتة على الكمبيوتر', 'installed_apps'),
+        ],
+        [
+          button('🚫 قائمة العناصر والمواقع الممنوعة', 'blocked_items'),
+        ],
+        [
+          button('🔙 العودة للوحة الرئيسية', 'menu_main'),
+        ],
+      ],
+    };
+  }
+
+  Map<String, dynamic> _powerInlineMenu() {
+    Map<String, String> button(String text, String data) => {
+          'text': text,
+          'callback_data': data,
+        };
+
+    return {
+      'inline_keyboard': [
+        [
+          button('🔒 قفل الشاشة فوراً', 'lock'),
+          button('⏱️ قفل لمدة 30 دقيقة', 'lock_30'),
+          button('🔓 إلغاء القفل', 'unlock'),
+        ],
+        [
+          button('🔴 إغلاق الكمبيوتر (Shutdown)', 'shutdown'),
+          button('🔄 إعادة التشغيل (Restart)', 'restart'),
+        ],
+        [
+          button('👤 تسجيل الخروج', 'logout'),
         ],
         [
           button('🔙 العودة للوحة الرئيسية', 'menu_main'),
@@ -964,11 +1338,18 @@ class TelegramCommandService {
       'inline_keyboard': [
         [
           button('📚 وضع الدراسة', 'mode_study'),
-          button('💼 وضع العمل', 'mode_work'),
+          button('💼 وضع العمل والتركيز', 'mode_work'),
         ],
         [
           button('👶 وضع الأطفال', 'mode_kids'),
           button('🛡️ الحماية القصوى', 'mode_protection'),
+        ],
+        [
+          button('🕶️ تشغيل الخصوصية', 'privacy_on'),
+          button('👁️ إيقاف الخصوصية', 'privacy_off'),
+        ],
+        [
+          button('⚡ وضع الطوارئ', 'emergency'),
         ],
         [
           button('🔙 العودة للوحة الرئيسية', 'menu_main'),
@@ -990,13 +1371,90 @@ class TelegramCommandService {
           button('📴 إيقاف WiFi', 'wifi_off'),
         ],
         [
-          button('🔊 رفع الصوت', 'vol_up'),
-          button('🔉 خفض الصوت', 'vol_down'),
-          button('🔇 كتم', 'vol_mute'),
+          button('🚫 قطع الإنترنت نهائياً', 'net_off'),
+          button('🌐 إعادة الإنترنت', 'net_on'),
         ],
         [
-          button('🔵 تشغيل BT', 'bt_on'),
-          button('⚫ إيقاف BT', 'bt_off'),
+          button('🔵 تشغيل Bluetooth', 'bt_on'),
+          button('⚫ إيقاف Bluetooth', 'bt_off'),
+        ],
+        [
+          button('📱 أجهزة Bluetooth', 'bt_devices'),
+        ],
+        [
+          button('🔙 العودة للوحة الرئيسية', 'menu_main'),
+        ],
+      ],
+    };
+  }
+
+  Map<String, dynamic> _audioInlineMenu() {
+    Map<String, String> button(String text, String data) => {
+          'text': text,
+          'callback_data': data,
+        };
+
+    return {
+      'inline_keyboard': [
+        [
+          button('🔊 رفع الصوت (+10%)', 'vol_up'),
+          button('🔉 خفض الصوت (-10%)', 'vol_down'),
+        ],
+        [
+          button('🔇 كتم الصوت', 'vol_mute'),
+          button('🔊 إلغاء الكتم', 'vol_unmute'),
+        ],
+        [
+          button('25%', 'vol_25'),
+          button('50%', 'vol_50'),
+          button('75%', 'vol_75'),
+          button('100%', 'vol_100'),
+        ],
+        [
+          button('🔙 العودة للوحة الرئيسية', 'menu_main'),
+        ],
+      ],
+    };
+  }
+
+  Map<String, dynamic> _insightsInlineMenu() {
+    Map<String, String> button(String text, String data) => {
+          'text': text,
+          'callback_data': data,
+        };
+
+    return {
+      'inline_keyboard': [
+        [
+          button('📊 التحليلات الذكية والملخص', 'smart_insights'),
+          button('📊 صحة ومواصفات الجهاز', 'health'),
+        ],
+        [
+          button('📜 طلب سجلات النشاط', 'logs'),
+          button('📸 التقاط صورة الشاشة', 'screenshot'),
+        ],
+        [
+          button('🔙 العودة للوحة الرئيسية', 'menu_main'),
+        ],
+      ],
+    };
+  }
+
+  Map<String, dynamic> _securityInlineMenu() {
+    Map<String, String> button(String text, String data) => {
+          'text': text,
+          'callback_data': data,
+        };
+
+    return {
+      'inline_keyboard': [
+        [
+          button('🛡️ قواعد حماية المسارات', 'path_rules'),
+          button('🚫 قائمة الممنوعات', 'blocked_items'),
+        ],
+        [
+          button('⚙️ فتح شاشة الأذونات بالكمبيوتر', 'permissions'),
+          button('🔑 إظهار رمز الربط QR', 'qr'),
         ],
         [
           button('🔙 العودة للوحة الرئيسية', 'menu_main'),
@@ -1006,21 +1464,34 @@ class TelegramCommandService {
   }
 
   String _helpText() {
-    return '📖 <b>دليل أوامر بوت KIOM:</b>\n\n'
-        '<b>الملفات وتبادل البيانات:</b>\n'
+    return '📖 <b>الدليل الشامل للتحكم بالكمبيوتر عبر Telegram:</b>\n\n'
+        '📁 <b>الملفات وتبادل البيانات:</b>\n'
         '• أرسل أي ملف للمحادثة وسيتم حفظه في <code>Downloads</code> بالكمبيوتر تلقائياً.\n'
-        '• <code>/get C:\\path\\file.ext</code>: إرسال ملف من الكمبيوتر إلى Telegram.\n'
+        '• <code>/get C:\\path\\file.ext</code>: إرسال أي ملف من الكمبيوتر إلى Telegram.\n'
         '• <code>/search تقرير</code>: بحث عن ملفات في الكمبيوتر وتحميلها.\n'
+        '• <code>/open C:\\path\\file.ext</code>: فتح ملف على شاشة الكمبيوتر.\n'
+        '• <code>/delete C:\\path\\file.ext</code>: حذف ملف.\n'
         '• <code>/browse roots</code>: استعراض أقراص وملفات الكمبيوتر.\n\n'
-        '<b>التحكم والأمان:</b>\n'
-        '• <code>status</code> أو <code>فحص</code>: فحص الاتصال.\n'
-        '• <code>screenshot</code>: طلب لقطة شاشة عالية الدقة.\n'
-        '• <code>health</code>: عرض حالة المعالج والذاكرة والبطارية.\n'
-        '• <code>lock</code>: قفل شاشة الكمبيوتر (مع تأكيد قبل التنفيذ).\n'
-        '• <code>emergency</code>: تفعيل وضع الطوارئ الشامل.\n'
+        '👁️ <b>البرامج والتطبيقات:</b>\n'
+        '• <code>/apps</code>: عرض البرامج المفتوحة ونوافذ المتصفح.\n'
+        '• <code>/close chrome.exe</code>: إغلاق برنامج.\n'
+        '• <code>/blockapp game.exe</code>: منع تشغيل برنامج.\n'
+        '• <code>/allowapp game.exe</code>: السماح لبرنامج.\n'
+        '• <code>/blocksite youtube.com</code>: حظر موقع.\n'
+        '• <code>/allowsite youtube.com</code>: السماح لموقع.\n'
+        '• <code>/installed</code>: عرض البرامج المثبتة.\n\n'
+        '🔒 <b>التحكم والطاقة:</b>\n'
+        '• <code>status</code>: فحص الاتصال.\n'
+        '• <code>screenshot</code>: لقطة شاشة فورية.\n'
+        '• <code>health</code>: صحة الجهاز (CPU, RAM, Disks).\n'
+        '• <code>lock</code>: قفل شاشة الكمبيوتر.\n'
+        '• <code>emergency</code>: وضع الطوارئ الشامل.\n'
         '• <code>shutdown</code>: إغلاق الكمبيوتر (مع زر تأكيد).\n'
         '• <code>restart</code>: إعادة التشغيل (مع زر تأكيد).\n'
-        '• <code>privacy on</code> / <code>privacy off</code>: وضع الخصوصية.\n'
+        '• <code>wifi on/off</code> | <code>internet on/off</code> | <code>bt on/off</code>\n'
+        '• <code>volume 50</code> | <code>volup</code> | <code>voldown</code> | <code>mute</code>\n'
+        '• <code>mode study/work/kids/protection</code>: الأوضاع الذكية.\n'
+        '• <code>privacy on/off</code>: وضع الخصوصية.\n'
         '• <code>undo</code>: التراجع عن آخر أمر.';
   }
 }

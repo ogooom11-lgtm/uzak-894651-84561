@@ -1317,6 +1317,109 @@ class CommandExecutorService {
             responsePayload = {'title': title, 'message': text};
             break;
 
+          case 'list_open_apps':
+          case 'open_apps':
+            final apps = store.list('open_apps');
+            success = true;
+            message = 'قائمة البرامج المفتوحة الحالية (${apps.length})';
+            responsePayload = {'apps': apps};
+            break;
+
+          case 'list_installed_apps':
+          case 'installed_apps':
+            final apps = store.list('installed_apps');
+            success = true;
+            message = 'قائمة البرامج المثبتة (${apps.length})';
+            responsePayload = {'apps': apps};
+            break;
+
+          case 'list_blocked_items':
+          case 'blocked_items':
+            final items = appBlocker.list();
+            success = true;
+            message = 'قائمة العناصر الممنوعة (${items.length})';
+            responsePayload = {'items': items};
+            break;
+
+          case 'list_path_rules':
+          case 'path_rules':
+            final rules = pathRules.listRules().map((r) => r.toMap()).toList();
+            success = true;
+            message = 'قواعد حماية المسارات (${rules.length})';
+            responsePayload = {'rules': rules};
+            break;
+
+          case 'smart_insights':
+            final openCount = store.list('open_apps').length;
+            final installedCount = store.list('installed_apps').length;
+            final blockedCount = appBlocker.list().length;
+            final rulesCount = pathRules.listRules().length;
+            final logsCount = store.list('logs').length;
+            final health = await windowsControl.systemHealth();
+            success = true;
+            message = 'ملخص التحليلات الذكية للجهاز';
+            responsePayload = {
+              'openAppsCount': openCount,
+              'installedAppsCount': installedCount,
+              'blockedItemsCount': blockedCount,
+              'pathRulesCount': rulesCount,
+              'logsCount': logsCount,
+              'health': health.payload,
+            };
+            break;
+
+          case 'rename_path':
+            final path = (command.payload['path'] ?? '').toString();
+            final newName = (command.payload['newName'] ?? '').toString();
+            if (path.isEmpty || newName.isEmpty) throw StateError('path و newName مطلوبان');
+            _ensurePathOperationAllowed(path, 'rename');
+            responsePayload = await fileManager.renamePath(path, newName);
+            success = true;
+            message = 'تمت إعادة تسمية المسار إلى $newName';
+            break;
+
+          case 'copy_path':
+            final path = (command.payload['path'] ?? '').toString();
+            final destination = (command.payload['destination'] ?? '').toString();
+            if (path.isEmpty || destination.isEmpty) throw StateError('path و destination مطلوبان');
+            _ensurePathOperationAllowed(path, 'copy');
+            _ensurePathOperationAllowed(destination, 'paste');
+            responsePayload = await fileManager.copyPath(path, destination);
+            success = true;
+            message = 'تم نسخ المسار بنجاح';
+            break;
+
+          case 'move_path':
+            final path = (command.payload['path'] ?? '').toString();
+            final destination = (command.payload['destination'] ?? '').toString();
+            if (path.isEmpty || destination.isEmpty) throw StateError('path و destination مطلوبان');
+            _ensurePathOperationAllowed(path, 'move');
+            _ensurePathOperationAllowed(destination, 'paste');
+            responsePayload = await fileManager.movePath(path, destination);
+            success = true;
+            message = 'تم نقل المسار بنجاح';
+            break;
+
+          case 'delete_path':
+            final path = (command.payload['path'] ?? '').toString();
+            if (path.isEmpty) throw StateError('path مطلوب');
+            final permanent = command.payload['permanent'] == true;
+            _ensurePathOperationAllowed(path, 'delete');
+            responsePayload = await fileManager.deletePath(path, permanent: permanent);
+            success = true;
+            message = permanent ? 'تم حذف المسار نهائياً' : 'تم نقل المسار إلى سلة المحذوفات';
+            break;
+
+          case 'hide_path':
+          case 'unhide_path':
+            final path = (command.payload['path'] ?? '').toString();
+            if (path.isEmpty) throw StateError('path مطلوب');
+            _ensurePathOperationAllowed(path, 'modify');
+            responsePayload = await fileManager.setHidden(path, command.type == 'hide_path');
+            success = true;
+            message = command.type == 'hide_path' ? 'تم إخفاء المسار' : 'تم إظهار المسار';
+            break;
+
           case 'stop_all_commands':
             await stopAllLocalCommands(reason: 'telegram');
             success = true;
