@@ -44,19 +44,6 @@ class KiomPcAgentApp {
 
   TelegramCloudDatabaseService? get telegramCloudDb => _telegramCloudDb;
 
-  void stop() {
-    _openAppsSync?.stop();
-    _installedAppsSync?.stop();
-    _installationGuard?.stop();
-    _desktopLock?.stop();
-    _appBlocker?.stop();
-    _connectivityNotifier?.stop();
-    _commandExecutor?.stop();
-    _telegramCommands?.stop();
-    _telegramCloudDb?.stop();
-    _pathGuard?.stop();
-  }
-
   Future<void> start() async {
     final config = await AgentConfig.load();
     final store = await JsonFileStore.open();
@@ -305,6 +292,7 @@ class KiomPcAgentApp {
     _connectivityNotifier?.stop();
     _commandExecutor?.stop();
     _telegramCommands?.stop();
+    _telegramCloudDb?.stop();
     _pathGuard?.stop();
   }
 }
