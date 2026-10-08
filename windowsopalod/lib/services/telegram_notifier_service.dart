@@ -151,15 +151,12 @@ class TelegramNotifierService {
   Future<List<Map<String, dynamic>>> getUpdates({int? offset}) async {
     if (!hasBotToken) return const [];
     try {
-      final response = await client
-          .get(
-            Uri.parse(_api('getUpdates')).replace(queryParameters: {
-              if (offset != null) 'offset': offset.toString(),
-              'timeout': '0',
-              'allowed_updates': jsonEncode(['message', 'callback_query']),
-            }),
-          )
-          .timeout(_httpTimeout);
+      final query = <String, String>{
+        if (offset != null) 'offset': offset.toString(),
+        'timeout': '1',
+      };
+      final uri = Uri.parse(_api('getUpdates')).replace(queryParameters: query);
+      final response = await client.get(uri).timeout(_httpTimeout);
       if (response.statusCode < 200 || response.statusCode >= 300) {
         await store.appendLog('telegram_updates_error',
             'Telegram getUpdates failed: ${response.statusCode}', {

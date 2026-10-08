@@ -148,7 +148,7 @@ class TelegramCommandService {
       return;
     }
 
-    final message = (update['message'] as Map?)?.cast<String, dynamic>();
+    final message = ((update['message'] ?? update['channel_post'] ?? update['edited_message']) as Map?)?.cast<String, dynamic>();
     if (message == null) return;
 
     final chat = (message['chat'] as Map?)?.cast<String, dynamic>();
@@ -156,23 +156,52 @@ class TelegramCommandService {
     if (chatId.isEmpty) return;
 
     final messageId = (message['message_id'] as num?)?.toInt();
-    final allowedChatId = telegram.effectiveChatId;
+    final text = (message['text'] ?? message['caption'] ?? '').toString().trim();
 
-    if (allowedChatId.isEmpty) {
-      await telegram.sendMessage(
-        '👋 مرحباً! معرف المحادثة (Chat ID) الخاص بك هو:\n<code>$chatId</code>\n\n'
-        'انسخه وضعه في تطبيق الهاتف (KIMO) لربط البوت بهذا الكمبيوتر فوراً كقاعدة بيانات وسحابة تحكم.',
+    // 1. Mobile App Cloud Database Protocol (#KIOM_CMD) - Always process immediately
+    if (text.startsWith('#KIOM_CMD')) {
+      final jsonStr = text.substring('#KIOM_CMD'.length).trim();
+      await _handleMobileCloudCommand(
+        jsonStr,
         chatId: chatId,
-        replyToMessageId: messageId,
+        targetTelegram: cloudDbTelegram ?? telegram,
       );
       return;
     }
 
-    if (chatId != allowedChatId) {
+    // Ignore raw system broadcast echoes
+    if (text.startsWith('#KIOM_')) {
       return;
     }
 
-    // 1. Check if user sent a file (Document, Photo, Video, Audio)
+    var allowedChatId = telegram.effectiveChatId;
+
+    final lower = text.toLowerCase();
+    final isGreetingOrBind = lower == '/start' ||
+        lower == 'start' ||
+        lower == '/bind' ||
+        lower == 'bind' ||
+        lower == '/help' ||
+        lower == 'help' ||
+        lower == 'الاوامر' ||
+        lower == 'مساعدة' ||
+        lower == '/menu' ||
+        lower == 'menu' ||
+        lower == 'لوحة التحكم';
+
+    if (allowedChatId.isEmpty || isGreetingOrBind) {
+      // Auto-bind this chat if not configured or if user requested /start or /bind
+      if (allowedChatId.isEmpty || lower == '/bind' || lower == 'bind' || lower == '/start') {
+        await store.set('telegramChatIdOverride', chatId);
+        allowedChatId = chatId;
+      }
+    }
+
+    if (chatId != allowedChatId && allowedChatId.isNotEmpty && !isGreetingOrBind) {
+      return;
+    }
+
+    // 2. Check if user sent a file (Document, Photo, Video, Audio)
     final hasFile = message.containsKey('document') ||
         message.containsKey('photo') ||
         message.containsKey('video') ||
@@ -184,20 +213,7 @@ class TelegramCommandService {
       return;
     }
 
-    final text = (message['text'] ?? '').toString().trim();
     if (text.isEmpty) return;
-
-    // 2. Handle Mobile App Cloud Database Protocol (#KIOM_CMD)
-    if (text.startsWith('#KIOM_CMD')) {
-      final jsonStr = text.substring('#KIOM_CMD'.length).trim();
-      await _handleMobileCloudCommand(jsonStr, chatId: chatId);
-      return;
-    }
-
-    // Ignore other agent broadcasts
-    if (text.startsWith('#KIOM_')) {
-      return;
-    }
 
     final handled = await _handleControlCommand(
       text,
@@ -411,9 +427,16 @@ class TelegramCommandService {
     final chat = (message?['chat'] as Map?)?.cast<String, dynamic>();
     final chatId = (chat?['id'] ?? '').toString();
     final messageId = (message?['message_id'] as num?)?.toInt();
-    final allowedChatId = telegram.effectiveChatId;
+    var allowedChatId = telegram.effectiveChatId;
 
-    if (chatId.isEmpty || allowedChatId.isEmpty || chatId != allowedChatId) {
+    if (chatId.isEmpty) return;
+
+    if (allowedChatId.isEmpty) {
+      await store.set('telegramChatIdOverride', chatId);
+      allowedChatId = chatId;
+    }
+
+    if (chatId != allowedChatId) {
       return;
     }
 

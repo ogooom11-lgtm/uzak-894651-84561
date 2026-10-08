@@ -78,8 +78,10 @@ class TelegramDeviceRepository implements DeviceRepository {
   final Map<String, Completer<RemoteFileListing>> _pendingFileCompleters = {};
 
   Timer? _pollTimer;
+  Timer? _relayPollTimer;
   int? _lastUpdateOffset;
   bool _isPolling = false;
+  bool _isRelayPolling = false;
 
   String get botToken => _botToken;
   String get chatId => _chatId;
@@ -109,7 +111,87 @@ class TelegramDeviceRepository implements DeviceRepository {
     }
 
     _pollTimer = Timer.periodic(const Duration(seconds: 2), (_) => _pollTelegram());
+    _relayPollTimer = Timer.periodic(const Duration(seconds: 2), (_) => _pollRelayUpdates());
     _pollTelegram();
+    _pollRelayUpdates();
+  }
+
+  Future<void> _publishToRelay(String topic, Map<String, dynamic> data) async {
+    try {
+      final uri = Uri.parse('https://ntfy.sh/$topic');
+      final req = await _httpClient.postUrl(uri);
+      req.headers.contentType = ContentType.json;
+      req.write(jsonEncode(data));
+      final res = await req.close();
+      await res.drain();
+    } catch (_) {}
+  }
+
+  Future<void> _pollRelayUpdates() async {
+    if (_isRelayPolling) return;
+    _isRelayPolling = true;
+    try {
+      final devices = await _store.loadDevices(AppEnvironment.demoUserId);
+      for (final device in devices) {
+        final deviceId = device.id;
+        if (deviceId.isEmpty) continue;
+
+        // 1. Poll state
+        try {
+          final uri = Uri.parse('https://ntfy.sh/kiom_state_$deviceId/json?since=10s');
+          final req = await _httpClient.getUrl(uri);
+          final res = await req.close();
+          if (res.statusCode == 200) {
+            final lines = await res.transform(utf8.decoder).transform(const LineSplitter()).toList();
+            for (final line in lines.reversed) {
+              if (line.trim().isEmpty) continue;
+              final msg = jsonDecode(line) as Map<String, dynamic>;
+              if (msg['event'] == 'message' && msg['message'] != null) {
+                await _handleStateMessage(msg['message'].toString());
+                break;
+              }
+            }
+          }
+        } catch (_) {}
+
+        // 2. Poll responses
+        try {
+          final uri = Uri.parse('https://ntfy.sh/kiom_res_$deviceId/json?since=10s');
+          final req = await _httpClient.getUrl(uri);
+          final res = await req.close();
+          if (res.statusCode == 200) {
+            final lines = await res.transform(utf8.decoder).transform(const LineSplitter()).toList();
+            for (final line in lines) {
+              if (line.trim().isEmpty) continue;
+              final msg = jsonDecode(line) as Map<String, dynamic>;
+              if (msg['event'] == 'message' && msg['message'] != null) {
+                _handleCommandResponseMessage(msg['message'].toString());
+              }
+            }
+          }
+        } catch (_) {}
+
+        // 3. Poll file responses
+        try {
+          final uri = Uri.parse('https://ntfy.sh/kiom_file_res_$deviceId/json?since=10s');
+          final req = await _httpClient.getUrl(uri);
+          final res = await req.close();
+          if (res.statusCode == 200) {
+            final lines = await res.transform(utf8.decoder).transform(const LineSplitter()).toList();
+            for (final line in lines) {
+              if (line.trim().isEmpty) continue;
+              final msg = jsonDecode(line) as Map<String, dynamic>;
+              if (msg['event'] == 'message' && msg['message'] != null) {
+                _handleFileListingMessage(msg['message'].toString());
+              }
+            }
+          }
+        } catch (_) {}
+      }
+    } catch (_) {
+    } finally {
+      _isRelayPolling = false;
+    }
   }
 
   Future<void> _pollTelegram() async {
@@ -618,8 +700,12 @@ class TelegramDeviceRepository implements DeviceRepository {
       'createdAt': DateTime.now().toIso8601String(),
     };
 
+    // 1. Instant Realtime Cloud Relay (Global)
+    unawaited(_publishToRelay('kiom_cmd_$deviceId', envelope));
+
+    // 2. Telegram Cloud Message
     final message = '#KIOM_CMD\n${jsonEncode(envelope)}';
-    await _sendTelegramMessage(message);
+    unawaited(_sendTelegramMessage(message));
 
     // Initial sent ack
     final ack = CommandResponse(
@@ -629,7 +715,7 @@ class TelegramDeviceRepository implements DeviceRepository {
       commandType: type.wireName,
       phase: 'sent',
       success: true,
-      message: 'تم إرسال الأمر عبر سحابة Telegram',
+      message: 'تم إرسال الأمر بنجاح عبر السحابة',
       createdAt: DateTime.now(),
     );
     _commandResponses.putIfAbsent(deviceId, () => []).insert(0, ack);
