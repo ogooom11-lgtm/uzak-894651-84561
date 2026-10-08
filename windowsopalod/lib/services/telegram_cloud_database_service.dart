@@ -1,10 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 
 import '../config/agent_config.dart';
-import '../models/open_app_info.dart';
-import '../models/path_rule.dart';
 import '../utils/json_file_store.dart';
 import 'application_blocker_service.dart';
 import 'command_executor_service.dart';

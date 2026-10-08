@@ -151,7 +151,8 @@ class FirestoreRestClient {
           'appPath': app.appPath,
           'openedAt': now,
           'status': 'running',
-          'windowTitle': app.windowTitle,
+          'windowTitle': app.title,
+          'title': app.title,
           'pageTitle': app.pageTitle,
           'url': app.url,
           'siteName': app.siteName,
@@ -208,6 +209,9 @@ class FirestoreRestClient {
     });
   }
 
+  Future<List<RemoteCommand>> getPendingCommands(String deviceId) =>
+      listenCommands(deviceId);
+
   Future<List<RemoteCommand>> listenCommands(String deviceId) async {
     final docs = await listDocuments('commands/$deviceId/items');
     final commands = <RemoteCommand>[];
@@ -229,11 +233,15 @@ class FirestoreRestClient {
       final executeAt = executeAtRaw == null
           ? null
           : DateTime.tryParse(executeAtRaw.toString());
+      final createdBy =
+          (map['createdBy'] ?? map['userId'] ?? 'user').toString();
 
       commands.add(RemoteCommand(
         id: id,
         type: type,
+        status: status,
         payload: payload,
+        createdBy: createdBy,
         createdAt: createdAt,
         executeAt: executeAt,
       ));
@@ -242,9 +250,16 @@ class FirestoreRestClient {
     return commands;
   }
 
-  Future<void> markCommandReceived(String deviceId, String commandId) async {
+  Future<void> markCommandReceived(
+    String deviceId,
+    String commandId, {
+    String? type,
+    String? message,
+  }) async {
     await setDocument('commands/$deviceId/items/$commandId', {
       'status': 'received',
+      if (type != null) 'type': type,
+      if (message != null) 'receivedMessage': message,
       'receivedAt': DateTime.now().toIso8601String(),
     });
   }
@@ -278,6 +293,116 @@ class FirestoreRestClient {
     );
   }
 
+  Future<void> markCommandExecuted(
+    String deviceId,
+    String commandId, {
+    required bool success,
+    required String message,
+    Map<String, dynamic>? payload,
+    Map<String, dynamic>? resultPayload,
+  }) async {
+    await markCommandDone(
+      deviceId,
+      commandId,
+      success: success,
+      resultMessage: message,
+      resultPayload: resultPayload ?? payload,
+    );
+  }
+
+  Future<void> writeResponse(
+    String deviceId,
+    String commandId,
+    String commandType,
+    bool success,
+    String message, [
+    Map<String, dynamic>? payload,
+    String? phase,
+  ]) async {
+    await createDocumentWithId(
+      'command_results/$deviceId/items',
+      commandId,
+      {
+        'commandId': commandId,
+        'commandType': commandType,
+        'success': success,
+        'message': message,
+        'phase': phase ?? 'final',
+        if (payload != null) 'payload': payload,
+        'createdAt': DateTime.now().toIso8601String(),
+      },
+    );
+  }
+
+  Future<void> writeRequestedLogs(
+    String deviceId,
+    dynamic idOrLogs, [
+    List<Map<String, dynamic>>? logs,
+  ]) async {
+    final String id;
+    final List<Map<String, dynamic>> actualLogs;
+    if (idOrLogs is List) {
+      id = DateTime.now().millisecondsSinceEpoch.toString();
+      actualLogs = idOrLogs.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+    } else {
+      id = idOrLogs.toString();
+      actualLogs = logs ?? const [];
+    }
+    await createDocumentWithId(
+      'requested_logs/$deviceId/items',
+      id,
+      {
+        'id': id,
+        'deviceId': deviceId,
+        'logs': actualLogs,
+        'createdAt': DateTime.now().toIso8601String(),
+      },
+    );
+  }
+
+  Future<void> createScreenshot({
+    String? id,
+    required String deviceId,
+    required String imageUrl,
+    required String storagePath,
+    Map<String, dynamic>? payload,
+  }) async {
+    final docId = id ?? DateTime.now().millisecondsSinceEpoch.toString();
+    await createDocumentWithId(
+      'screenshots/$deviceId/items',
+      docId,
+      {
+        'id': docId,
+        'deviceId': deviceId,
+        'imageUrl': imageUrl,
+        'storagePath': storagePath,
+        if (payload != null) 'payload': payload,
+        'createdAt': DateTime.now().toIso8601String(),
+      },
+    );
+  }
+
+  Future<void> createInstallChange({
+    required String deviceId,
+    required String appName,
+    required String changeType,
+    Map<String, dynamic>? payload,
+  }) async {
+    final id = DateTime.now().millisecondsSinceEpoch.toString();
+    await createDocumentWithId(
+      'install_changes/$deviceId/items',
+      id,
+      {
+        'id': id,
+        'deviceId': deviceId,
+        'appName': appName,
+        'changeType': changeType,
+        if (payload != null) 'payload': payload,
+        'createdAt': DateTime.now().toIso8601String(),
+      },
+    );
+  }
+
   Future<void> createNotification({
     required String deviceId,
     required String title,
@@ -299,15 +424,16 @@ class FirestoreRestClient {
   }
 
   Future<void> createPermissionRequest({
-    required String id,
+    String? id,
     required String deviceId,
-    required String ruleId,
     required String path,
     required String openedPath,
+    required String ruleId,
   }) async {
+    final reqId = id ?? DateTime.now().millisecondsSinceEpoch.toString();
     final createdAt = DateTime.now().toIso8601String();
-    await createDocumentWithId('permission_requests/$deviceId/items', id, {
-      'id': id,
+    await createDocumentWithId('permission_requests/$deviceId/items', reqId, {
+      'id': reqId,
       'deviceId': deviceId,
       'ruleId': ruleId,
       'path': path,
@@ -324,7 +450,7 @@ class FirestoreRestClient {
         type: 'permission_request',
         severity: 'warning',
         payload: {
-          'requestId': id,
+          'requestId': reqId,
           'path': path,
           'openedPath': openedPath,
           'ruleId': ruleId,

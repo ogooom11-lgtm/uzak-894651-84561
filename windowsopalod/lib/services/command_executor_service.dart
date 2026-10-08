@@ -99,7 +99,8 @@ class CommandExecutorService {
             'COMMAND_POLL: received ${commands.length} pending command(s).');
       }
 
-      final ordered = [...commands]..sort((a, b) {
+      final ordered = List<RemoteCommand>.from(commands)
+        ..sort((RemoteCommand a, RemoteCommand b) {
           final ad = a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
           final bd = b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
           return ad.compareTo(bd);
