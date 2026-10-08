@@ -1335,7 +1335,7 @@ class CommandExecutorService {
 
           case 'list_blocked_items':
           case 'blocked_items':
-            final items = appBlocker.list();
+            final items = appBlocker.cloudItems();
             success = true;
             message = 'قائمة العناصر الممنوعة (${items.length})';
             responsePayload = {'items': items};
@@ -1343,7 +1343,7 @@ class CommandExecutorService {
 
           case 'list_path_rules':
           case 'path_rules':
-            final rules = pathRules.listRules().map((r) => r.toMap()).toList();
+            final rules = pathRules.getRules().map((r) => r.toJson()).toList();
             success = true;
             message = 'قواعد حماية المسارات (${rules.length})';
             responsePayload = {'rules': rules};
@@ -1352,8 +1352,8 @@ class CommandExecutorService {
           case 'smart_insights':
             final openCount = store.list('open_apps').length;
             final installedCount = store.list('installed_apps').length;
-            final blockedCount = appBlocker.list().length;
-            final rulesCount = pathRules.listRules().length;
+            final blockedCount = appBlocker.cloudItems().length;
+            final rulesCount = pathRules.getRules().length;
             final logsCount = store.list('logs').length;
             final health = await windowsControl.systemHealth();
             success = true;

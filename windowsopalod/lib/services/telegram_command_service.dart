@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:uuid/uuid.dart';
@@ -1054,7 +1053,8 @@ class TelegramCommandService {
         if (!isDir && path.isNotEmpty) {
           fileButtons.add([
             {
-              'text': '⬇️ تحميل: ${name.length > 18 ? name.substring(0, 18) + '...' : name}',
+              'text':
+                  '⬇️ تحميل: ${name.length > 18 ? '${name.substring(0, 18)}...' : name}',
               'callback_data': 'get_file:$path',
             },
             {
