@@ -126,6 +126,30 @@ class TelegramNotifierService {
     }
   }
 
+  Future<bool> deleteMessage({
+    required int messageId,
+    String? chatId,
+  }) async {
+    if (!hasBotToken) return false;
+    final targetChatId = (chatId ?? effectiveChatId).trim();
+    if (targetChatId.isEmpty) return false;
+    try {
+      final response = await client
+          .post(
+            Uri.parse(_api('deleteMessage')),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'chat_id': targetChatId,
+              'message_id': messageId,
+            }),
+          )
+          .timeout(_httpTimeout);
+      return response.statusCode >= 200 && response.statusCode < 300;
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<bool> removeReplyKeyboard({String? chatId, String message = ''}) async {
     if (!hasBotToken) return false;
     final targetChatId = (chatId ?? effectiveChatId).trim();

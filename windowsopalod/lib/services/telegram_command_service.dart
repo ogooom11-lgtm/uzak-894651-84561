@@ -99,19 +99,21 @@ class TelegramCommandService {
   }
 
   Future<void> _handleCloudDbUpdate(Map<String, dynamic> update) async {
-    final message = (update['message'] as Map?)?.cast<String, dynamic>();
+    final message = ((update['message'] ?? update['channel_post']) as Map?)?.cast<String, dynamic>();
     if (message == null) return;
 
     final chat = (message['chat'] as Map?)?.cast<String, dynamic>();
     final chatId = (chat?['id'] ?? '').toString();
     if (chatId.isEmpty) return;
 
+    final messageId = (message['message_id'] as num?)?.toInt();
     final text = (message['text'] ?? '').toString().trim();
     if (text.startsWith('#KIOM_CMD')) {
       final jsonStr = text.substring('#KIOM_CMD'.length).trim();
       await _handleMobileCloudCommand(
         jsonStr,
         chatId: chatId,
+        messageId: messageId,
         targetTelegram: cloudDbTelegram ?? telegram,
       );
     }
@@ -232,12 +234,14 @@ class TelegramCommandService {
   Future<void> _handleMobileCloudCommand(
     String jsonStr, {
     required String chatId,
+    int? messageId,
     TelegramNotifierService? targetTelegram,
   }) async {
     final sender = targetTelegram ?? cloudDbTelegram ?? telegram;
     try {
       final envelope = jsonDecode(jsonStr) as Map<String, dynamic>;
       final targetDeviceId = (envelope['deviceId'] ?? '').toString();
+      // If targeted at ANOTHER device, do NOT execute and do NOT delete!
       if (targetDeviceId.isNotEmpty && targetDeviceId != deviceId) return;
 
       final commandId = (envelope['id'] ?? const Uuid().v4()).toString();
@@ -283,6 +287,11 @@ class TelegramCommandService {
           chatId: chatId,
           parseMode: '',
         );
+      }
+
+      // Delete the executed mobile command message if messageId is known
+      if (messageId != null) {
+        unawaited(sender.deleteMessage(messageId: messageId, chatId: chatId));
       }
     } catch (e, st) {
       await store.appendLog('telegram_mobile_cmd_error', e.toString(), {
@@ -420,6 +429,31 @@ class TelegramCommandService {
     }
   }
 
+  Future<void> _editOrSendMessage(
+    String text, {
+    required String chatId,
+    int? messageId,
+    Map<String, dynamic>? replyMarkup,
+    String parseMode = 'HTML',
+  }) async {
+    if (messageId != null) {
+      final edited = await telegram.editMessageText(
+        text: text,
+        chatId: chatId,
+        messageId: messageId,
+        replyMarkup: replyMarkup,
+        parseMode: parseMode,
+      );
+      if (edited) return;
+    }
+    await telegram.sendMessage(
+      text,
+      chatId: chatId,
+      replyMarkup: replyMarkup,
+      parseMode: parseMode,
+    );
+  }
+
   Future<void> _handleCallbackQuery(Map<String, dynamic> callback) async {
     final id = (callback['id'] ?? '').toString();
     final data = (callback['data'] ?? '').toString();
@@ -446,10 +480,10 @@ class TelegramCommandService {
       final pending = _pendingConfirmations.remove(token);
       await telegram.answerCallbackQuery(id, text: 'جاري التنفيذ...');
       if (pending == null) {
-        await telegram.sendMessage(
+        await _editOrSendMessage(
           '⚠️ انتهت صلاحية هذا التأكيد أو تم تنفيذه مسبقاً.',
           chatId: chatId,
-          replyToMessageId: messageId,
+          messageId: messageId,
         );
         return;
       }
@@ -461,10 +495,10 @@ class TelegramCommandService {
       final token = data.substring('confirm_no:'.length);
       _pendingConfirmations.remove(token);
       await telegram.answerCallbackQuery(id, text: 'تم الإلغاء');
-      await telegram.sendMessage(
+      await _editOrSendMessage(
         '🚫 <b>تم إلغاء العملية بأمان.</b>',
         chatId: chatId,
-        replyToMessageId: messageId,
+        messageId: messageId,
         replyMarkup: _dashboardInlineMenu(),
       );
       return;
@@ -474,106 +508,106 @@ class TelegramCommandService {
     await telegram.answerCallbackQuery(id, text: 'تم الاختيار');
 
     if (data == 'menu_main' || data == 'menu') {
-      await telegram.sendMessage(
+      await _editOrSendMessage(
         _dashboardText(),
         chatId: chatId,
-        replyToMessageId: messageId,
+        messageId: messageId,
         replyMarkup: _dashboardInlineMenu(),
       );
       return;
     }
     if (data == 'menu_files') {
-      await telegram.sendMessage(
+      await _editOrSendMessage(
         '📁 <b>إدارة الملفات بالكمبيوتر:</b>\n\n'
         '• تصفح الأقراص والمجلدات المباشرة\n'
         '• <code>/get C:\\path\\file.pdf</code> لإرسال أي ملف لتليجرام\n'
         '• <code>/search تقرير</code> للبحث عن ملفات\n'
         '• أو أرسل أي ملف للمحادثة وسيتم حفظه في الكمبيوتر فوراً!',
         chatId: chatId,
-        replyToMessageId: messageId,
+        messageId: messageId,
         replyMarkup: _filesInlineMenu(),
       );
       return;
     }
     if (data == 'menu_apps') {
-      await telegram.sendMessage(
+      await _editOrSendMessage(
         '👁️ <b>إدارة البرامج والتطبيقات:</b>\n'
         'عرض التطبيقات الشغالة، إغلاق البرامج، أو منع المواقع والتطبيقات:',
         chatId: chatId,
-        replyToMessageId: messageId,
+        messageId: messageId,
         replyMarkup: _appsInlineMenu(),
       );
       return;
     }
     if (data == 'menu_power') {
-      await telegram.sendMessage(
+      await _editOrSendMessage(
         '🔒 <b>الطاقة والقفل والجدولة الذكية:</b>\n'
         'اختر مدة القفل أو وقت إغلاق الجهاز:',
         chatId: chatId,
-        replyToMessageId: messageId,
+        messageId: messageId,
         replyMarkup: _powerInlineMenu(),
       );
       return;
     }
     if (data == 'menu_modes') {
-      await telegram.sendMessage(
+      await _editOrSendMessage(
         '🎛️ <b>الأوضاع الذكية الجاهزة:</b>\nاختر الوضع المطلوب لتطبيقه فوراً على الكمبيوتر:',
         chatId: chatId,
-        replyToMessageId: messageId,
+        messageId: messageId,
         replyMarkup: _modesInlineMenu(),
       );
       return;
     }
     if (data == 'menu_network') {
-      await telegram.sendMessage(
+      await _editOrSendMessage(
         '🌐 <b>التحكم بالشبكة والبلوتوث:</b>\nتشغيل وإيقاف WiFi والإنترنت والبلوتوث بنقرة واحدة:',
         chatId: chatId,
-        replyToMessageId: messageId,
+        messageId: messageId,
         replyMarkup: _networkInlineMenu(),
       );
       return;
     }
     if (data == 'menu_audio') {
-      await telegram.sendMessage(
+      await _editOrSendMessage(
         '🔊 <b>التحكم السريع بمستوى الصوت:</b>\nاختر النسبة المطلوبة فوراً:',
         chatId: chatId,
-        replyToMessageId: messageId,
+        messageId: messageId,
         replyMarkup: _audioInlineMenu(),
       );
       return;
     }
     if (data == 'menu_messages') {
-      await telegram.sendMessage(
+      await _editOrSendMessage(
         '💬 <b>إرسال رسائل وتنبيهات لشاشة الكمبيوتر:</b>\nاختر قالباً جاهزاً أو اكتب <code>/msg نص_الرسالة</code>:',
         chatId: chatId,
-        replyToMessageId: messageId,
+        messageId: messageId,
         replyMarkup: _messagesInlineMenu(),
       );
       return;
     }
     if (data == 'menu_insights') {
-      await telegram.sendMessage(
+      await _editOrSendMessage(
         '📊 <b>السجلات والتحليلات والصحة:</b>\nاختر التقرير المطلوب:',
         chatId: chatId,
-        replyToMessageId: messageId,
+        messageId: messageId,
         replyMarkup: _insightsInlineMenu(),
       );
       return;
     }
     if (data == 'menu_security') {
-      await telegram.sendMessage(
+      await _editOrSendMessage(
         '🛡️ <b>الحماية والأذونات والتثبيت:</b>\nإدارة قواعد الحماية وطلبات الإذن والتثبيت:',
         chatId: chatId,
-        replyToMessageId: messageId,
+        messageId: messageId,
         replyMarkup: _securityInlineMenu(),
       );
       return;
     }
     if (data == 'menu_help') {
-      await telegram.sendMessage(
+      await _editOrSendMessage(
         _helpText(),
         chatId: chatId,
-        replyToMessageId: messageId,
+        messageId: messageId,
         replyMarkup: _dashboardInlineMenu(),
       );
       return;
@@ -693,13 +727,17 @@ class TelegramCommandService {
       payload: parsed.payload,
     );
 
+    // Delete user command input to keep chat clean
+    if (replyToMessageId != null) {
+      unawaited(telegram.deleteMessage(messageId: replyToMessageId, chatId: chatId));
+    }
+
     final formattedText = _formatResult(parsed.type, result);
     final inlineMarkup = _resultInlineButtons(parsed.type, result.payload);
 
     await telegram.sendMessage(
       formattedText,
       chatId: chatId,
-      replyToMessageId: replyToMessageId,
       replyMarkup: inlineMarkup ?? _dashboardInlineMenu(),
     );
   }
