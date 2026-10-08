@@ -22,6 +22,7 @@ import '../services/process_monitor_service.dart';
 import '../services/single_instance_service.dart';
 import '../services/startup_registration_service.dart';
 import '../services/startup_task_service.dart';
+import '../services/telegram_cloud_database_service.dart';
 import '../services/telegram_command_service.dart';
 import '../services/telegram_notifier_service.dart';
 import '../utils/json_file_store.dart';
@@ -38,6 +39,7 @@ class KiomPcAgentApp {
   ConnectivityNotifierService? _connectivityNotifier;
   CommandExecutorService? _commandExecutor;
   TelegramCommandService? _telegramCommands;
+  TelegramCloudDatabaseService? _telegramCloudDb;
   PathGuardService? _pathGuard;
 
   Future<void> start() async {
@@ -231,6 +233,17 @@ class KiomPcAgentApp {
       store: store,
       telegram: telegram,
       executor: _commandExecutor!,
+    )..start();
+
+    _telegramCloudDb = TelegramCloudDatabaseService(
+      deviceId: deviceId,
+      deviceName: device['name'].toString(),
+      config: config,
+      store: store,
+      telegram: telegram,
+      executor: _commandExecutor!,
+      appBlocker: _appBlocker!,
+      pathRuleStore: pathRuleStore,
     )..start();
 
     _pathGuard = PathGuardService(

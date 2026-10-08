@@ -1,32 +1,16 @@
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
 
 import 'config/app_environment.dart';
-import 'config/firebase_options.dart';
 import 'repositories/device_repository.dart';
-import 'repositories/firebase_device_repository.dart';
-import 'repositories/mock_device_repository.dart';
+import 'repositories/telegram_device_repository.dart';
 import 'screens/devices_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  final DeviceRepository repository;
-  if (AppEnvironment.useFirebase) {
-    await Firebase.initializeApp(
-        options: DefaultFirebaseOptions.currentPlatform);
-    if (FirebaseAuth.instance.currentUser == null) {
-      try {
-        await FirebaseAuth.instance.signInAnonymously();
-      } catch (_) {}
-    }
-    repository = FirebaseDeviceRepository();
-  } else {
-    repository = MockDeviceRepository();
-  }
+  final DeviceRepository repository = TelegramDeviceRepository();
 
   runApp(
     Provider<DeviceRepository>.value(
@@ -99,92 +83,59 @@ ThemeData _appTheme(Brightness brightness) {
       surfaceTintColor: Colors.transparent,
       foregroundColor: isDark ? Colors.white : const Color(0xFF0F172A),
       titleTextStyle: TextStyle(
+        fontFamily: 'Tajawal',
         color: isDark ? Colors.white : const Color(0xFF0F172A),
-        fontSize: 21,
-        fontWeight: FontWeight.w900,
+        fontSize: 20,
+        fontWeight: FontWeight.w800,
       ),
     ),
-    cardTheme: CardThemeData(
-      color: isDark
-          ? const Color(0xFF111827).withValues(alpha: .92)
-          : Colors.white.withValues(alpha: .96),
+    cardTheme: CardTheme(
       elevation: 0,
-      margin: const EdgeInsets.symmetric(vertical: 8),
-      shadowColor: Colors.black.withValues(alpha: .08),
+      color: isDark ? const Color(0xFF131D31) : Colors.white,
       shape: RoundedRectangleBorder(
         borderRadius: radius,
         side: BorderSide(
           color: isDark
-              ? Colors.white.withValues(alpha: .08)
-              : Colors.black.withValues(alpha: .05),
+              ? Colors.white.withValues(alpha: .06)
+              : Colors.black.withValues(alpha: .04),
+          width: 1,
         ),
       ),
-    ),
-    listTileTheme: ListTileThemeData(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
     ),
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
-      fillColor: isDark
-          ? Colors.white.withValues(alpha: .06)
-          : Colors.white.withValues(alpha: .94),
-      contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+      fillColor: isDark ? const Color(0xFF131D31) : const Color(0xFFF8FAFC),
       border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(18),
-        borderSide: BorderSide.none,
+        borderRadius: BorderRadius.circular(16),
+        borderSide: BorderSide(
+          color: isDark ? Colors.white12 : Colors.black12,
+        ),
       ),
       enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(16),
         borderSide: BorderSide(
-          color: isDark
-              ? Colors.white.withValues(alpha: .08)
-              : Colors.black.withValues(alpha: .06),
+          color: isDark ? Colors.white12 : Colors.black12,
         ),
       ),
       focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(18),
-        borderSide: BorderSide(color: scheme.primary, width: 1.4),
+        borderRadius: BorderRadius.circular(16),
+        borderSide: const BorderSide(color: Color(0xFF2563EB), width: 1.5),
       ),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
     ),
-    filledButtonTheme: FilledButtonThemeData(
-      style: FilledButton.styleFrom(
-        elevation: 0,
-        minimumSize: const Size(0, 52),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-        textStyle: const TextStyle(fontWeight: FontWeight.w800),
+    dialogTheme: DialogTheme(
+      backgroundColor: isDark ? const Color(0xFF101827) : Colors.white,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+    ),
+    bottomSheetTheme: BottomSheetThemeData(
+      backgroundColor: isDark ? const Color(0xFF101827) : Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
       ),
-    ),
-    outlinedButtonTheme: OutlinedButtonThemeData(
-      style: OutlinedButton.styleFrom(
-        minimumSize: const Size(0, 52),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-        textStyle: const TextStyle(fontWeight: FontWeight.w800),
-        side: BorderSide(color: scheme.primary.withValues(alpha: .24)),
-      ),
-    ),
-    iconButtonTheme: IconButtonThemeData(
-      style: IconButton.styleFrom(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      ),
-    ),
-    floatingActionButtonTheme: FloatingActionButtonThemeData(
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
-      backgroundColor: scheme.primary,
-      foregroundColor: scheme.onPrimary,
     ),
     snackBarTheme: SnackBarThemeData(
       behavior: SnackBarBehavior.floating,
-      elevation: 0,
-      backgroundColor: isDark ? const Color(0xFFE2E8F0) : const Color(0xFF0F172A),
-      contentTextStyle: TextStyle(
-        color: isDark ? const Color(0xFF0F172A) : Colors.white,
-        fontWeight: FontWeight.w700,
-      ),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
     ),
   );
 }

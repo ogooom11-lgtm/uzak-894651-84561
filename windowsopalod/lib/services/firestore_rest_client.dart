@@ -18,6 +18,9 @@ class FirestoreRestClient {
   DateTime? _tokenExpiresAt;
   bool _anonymousAuthUnavailable = false;
 
+  bool get isFirebaseConfigured =>
+      config.projectId.trim().isNotEmpty && config.apiKey.trim().isNotEmpty;
+
   static const Duration _httpTimeout = Duration(seconds: 15);
 
   String get _base =>
@@ -32,34 +35,31 @@ class FirestoreRestClient {
   }
 
   Future<bool> documentExists(String path) async {
-    final response = await _get(_uri(path), headers: await _headers());
-    if (response.statusCode == 200) return true;
-    if (response.statusCode == 404) return false;
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw StateError(
-          'Firestore documentExists failed ${response.statusCode}: ${response.body}');
-    }
+    if (!isFirebaseConfigured) return false;
+    try {
+      final response = await _get(_uri(path), headers: await _headers());
+      if (response.statusCode == 200) return true;
+      if (response.statusCode == 404) return false;
+    } catch (_) {}
     return false;
   }
 
   Future<void> setDocument(String path, Map<String, dynamic> data) async {
-    final maskQuery = data.keys
-        .map((k) => 'updateMask.fieldPaths=${Uri.encodeQueryComponent(k)}')
-        .join('&');
-    final baseUrl = _uri(path).toString();
-    final sep = baseUrl.contains('?') ? '&' : '?';
-    final url = maskQuery.isEmpty ? baseUrl : '$baseUrl$sep$maskQuery';
+    if (!isFirebaseConfigured) return;
+    try {
+      final maskQuery = data.keys
+          .map((k) => 'updateMask.fieldPaths=${Uri.encodeQueryComponent(k)}')
+          .join('&');
+      final baseUrl = _uri(path).toString();
+      final sep = baseUrl.contains('?') ? '&' : '?';
+      final url = maskQuery.isEmpty ? baseUrl : '$baseUrl$sep$maskQuery';
 
-    final response = await _patch(
-      Uri.parse(url),
-      headers: await _headers(jsonBody: true),
-      body: jsonEncode({'fields': _toFields(data)}),
-    );
-
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw StateError(
-          'Firestore setDocument failed ${response.statusCode}: ${response.body}');
-    }
+      await _patch(
+        Uri.parse(url),
+        headers: await _headers(jsonBody: true),
+        body: jsonEncode({'fields': _toFields(data)}),
+      );
+    } catch (_) {}
   }
 
   Future<void> createDocumentWithId(
@@ -67,56 +67,48 @@ class FirestoreRestClient {
     String documentId,
     Map<String, dynamic> data,
   ) async {
-    final uri = _uri(collectionPath, {'documentId': documentId});
-    final response = await _post(
-      uri,
-      headers: await _headers(jsonBody: true),
-      body: jsonEncode({'fields': _toFields(data)}),
-    );
+    if (!isFirebaseConfigured) return;
+    try {
+      final uri = _uri(collectionPath, {'documentId': documentId});
+      final response = await _post(
+        uri,
+        headers: await _headers(jsonBody: true),
+        body: jsonEncode({'fields': _toFields(data)}),
+      );
 
-    if (response.statusCode == 409) {
-      await setDocument('$collectionPath/$documentId', data);
-      return;
-    }
-
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw StateError(
-          'Firestore createDocument failed ${response.statusCode}: ${response.body}');
-    }
+      if (response.statusCode == 409) {
+        await setDocument('$collectionPath/$documentId', data);
+      }
+    } catch (_) {}
   }
 
   Future<List<Map<String, dynamic>>> listDocuments(
       String collectionPath) async {
-    final response =
-        await _get(_uri(collectionPath), headers: await _headers());
-    if (response.statusCode == 404) return [];
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw StateError(
-          'Firestore listDocuments failed ${response.statusCode}: ${response.body}');
+    if (!isFirebaseConfigured) return [];
+    try {
+      final response =
+          await _get(_uri(collectionPath), headers: await _headers());
+      if (response.statusCode == 404) return [];
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        return [];
+      }
+
+      final decoded = jsonDecode(response.body) as Map<String, dynamic>;
+      final docs = (decoded['documents'] as List?) ?? const [];
+      return docs
+          .whereType<Map>()
+          .map((doc) => _flattenDocument(doc.cast<String, dynamic>()))
+          .toList();
+    } catch (_) {
+      return [];
     }
-
-    final decoded = jsonDecode(response.body) as Map<String, dynamic>;
-    final docs = (decoded['documents'] as List?) ?? const [];
-
-    return docs.map((doc) {
-      final map = doc as Map<String, dynamic>;
-      final name = (map['name'] ?? '').toString();
-      final id = name.split('/').last;
-      return {
-        'id': id,
-        ..._fromFields(
-            (map['fields'] as Map?)?.cast<String, dynamic>() ?? const {}),
-      };
-    }).toList();
   }
 
   Future<void> deleteDocument(String path) async {
-    final response = await _delete(_uri(path), headers: await _headers());
-    if (response.statusCode == 404) return;
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw StateError(
-          'Firestore deleteDocument failed ${response.statusCode}: ${response.body}');
-    }
+    if (!isFirebaseConfigured) return;
+    try {
+      await _delete(_uri(path), headers: await _headers());
+    } catch (_) {}
   }
 
   Future<void> registerDevice({
@@ -126,19 +118,79 @@ class FirestoreRestClient {
     required String windowsUser,
     required String appVersion,
   }) async {
+    final now = DateTime.now().toIso8601String();
     await setDocument('devices/$deviceId', {
       'name': name,
       'os': os,
       'windowsUser': windowsUser,
       'appVersion': appVersion,
-      'status': 'registered',
       'linkedUserIds': [config.demoUserId],
-      'lastCheckResponse': 'لم يتم الفحص بعد',
-      'volume': 50,
-      'isMuted': false,
-      'registeredAt': DateTime.now().toIso8601String(),
-      'updatedAt': DateTime.now().toIso8601String(),
+      'createdAt': now,
+      'updatedAt': now,
+      'lastAgentStartedAt': now,
+      'lastSeenAt': now,
     });
+  }
+
+  Future<void> updateHeartbeat(String deviceId) async {
+    await setDocument('devices/$deviceId', {
+      'lastSeenAt': DateTime.now().toIso8601String(),
+    });
+  }
+
+  Future<void> syncOpenApps(String deviceId, List<OpenAppInfo> apps) async {
+    if (!isFirebaseConfigured) return;
+    final now = DateTime.now().toIso8601String();
+    for (final app in apps) {
+      await createDocumentWithId(
+        'open_apps/$deviceId/items',
+        app.processId.toString(),
+        {
+          'processId': app.processId.toString(),
+          'appName': app.appName,
+          'appPath': app.appPath,
+          'openedAt': now,
+          'status': 'running',
+          'windowTitle': app.windowTitle,
+          'pageTitle': app.pageTitle,
+          'url': app.url,
+          'siteName': app.siteName,
+          'browserName': app.browserName,
+          'updatedAt': now,
+        },
+      );
+    }
+  }
+
+  Future<void> syncBlockedItems(
+    String deviceId,
+    List<Map<String, dynamic>> items,
+  ) async {
+    if (!isFirebaseConfigured) return;
+    for (final item in items) {
+      final id = _safeDocumentId(
+          (item['id'] ?? item['target'] ?? item['domain'] ?? '').toString());
+      await setDocument('blocked_items/$deviceId/items/$id', {
+        ...item,
+        'updatedAt': DateTime.now().toIso8601String(),
+      });
+    }
+  }
+
+  Future<void> syncInstalledApps(
+    String deviceId,
+    List<Map<String, dynamic>> apps,
+  ) async {
+    if (!isFirebaseConfigured) return;
+    for (final app in apps) {
+      final name = (app['name'] ?? app['displayName'] ?? '').toString();
+      if (name.trim().isEmpty) continue;
+      final docId = _safeDocumentId(name);
+      await setDocument('installed_apps/$deviceId/items/$docId', {
+        ...app,
+        'updatedAt': DateTime.now().toIso8601String(),
+      });
+    }
   }
 
   Future<void> createPairingToken({
@@ -150,103 +202,80 @@ class FirestoreRestClient {
     await createDocumentWithId('pairing_tokens', token, {
       'deviceId': deviceId,
       'securityKey': securityKey,
-      'used': false,
-      'createdAt': DateTime.now().toIso8601String(),
       'expiresAt': expiresAt.toIso8601String(),
-    });
-  }
-
-  Future<void> syncOpenApps(String deviceId, List<OpenAppInfo> apps) async {
-    final collection = 'open_apps/$deviceId/items';
-    final existing = await listDocuments(collection);
-    final currentIds = apps.map((e) => e.processId.toString()).toSet();
-
-    for (final doc in existing) {
-      final id = doc['id'].toString();
-      if (!currentIds.contains(id)) {
-        await deleteDocument('$collection/$id');
-      }
-    }
-
-    for (final app in apps) {
-      await createDocumentWithId(
-          collection, app.processId.toString(), app.toMap());
-    }
-  }
-
-  Future<void> writeRequestedLogs(
-      String deviceId, List<Map<String, dynamic>> logs) async {
-    final collection = 'requested_logs/$deviceId/items';
-    final now = DateTime.now().millisecondsSinceEpoch;
-
-    for (var i = 0; i < logs.length; i++) {
-      final log = logs[i];
-      final createdAt =
-          (log['createdAt'] ?? DateTime.now().toIso8601String()).toString();
-      final extra = (log['extra'] is Map)
-          ? (log['extra'] as Map).cast<String, dynamic>()
-          : <String, dynamic>{};
-      await createDocumentWithId(collection, 'log_${now}_$i', {
-        'type': (log['type'] ?? 'general').toString(),
-        'message': (log['message'] ?? '').toString(),
-        'target': (log['target'] ?? extra['path'] ?? extra['appName'] ?? '')
-            .toString(),
-        'payload': extra,
-        'createdAt': createdAt,
-      });
-    }
-  }
-
-  Future<void> syncInstalledApps(
-      String deviceId, List<Map<String, dynamic>> apps) async {
-    final collection = 'installed_apps/$deviceId/items';
-    final existing = await listDocuments(collection);
-    final currentIds = apps.map((e) => e['id'].toString()).toSet();
-
-    for (final doc in existing) {
-      final id = doc['id'].toString();
-      if (!currentIds.contains(id)) {
-        await deleteDocument('$collection/$id');
-      }
-    }
-
-    for (final app in apps) {
-      await createDocumentWithId(collection, app['id'].toString(), app);
-    }
-  }
-
-  Future<void> syncBlockedItems(
-      String deviceId, List<Map<String, dynamic>> items) async {
-    final collection = 'blocked_items/$deviceId/items';
-    final existing = await listDocuments(collection);
-    final currentIds = items.map((e) => e['id'].toString()).toSet();
-
-    for (final doc in existing) {
-      final id = doc['id'].toString();
-      if (!currentIds.contains(id)) {
-        await deleteDocument('$collection/$id');
-      }
-    }
-
-    for (final item in items) {
-      await createDocumentWithId(collection, item['id'].toString(), item);
-    }
-  }
-
-  Future<void> createScreenshot({
-    required String deviceId,
-    required String imageUrl,
-    required String storagePath,
-    required Map<String, dynamic> payload,
-  }) async {
-    final id = 'shot_${DateTime.now().millisecondsSinceEpoch}';
-    await createDocumentWithId('screenshots/$deviceId/items', id, {
-      'deviceId': deviceId,
-      'imageUrl': imageUrl,
-      'storagePath': storagePath,
-      'payload': payload,
       'createdAt': DateTime.now().toIso8601String(),
+      'used': false,
     });
+  }
+
+  Future<List<RemoteCommand>> listenCommands(String deviceId) async {
+    final docs = await listDocuments('commands/$deviceId/items');
+    final commands = <RemoteCommand>[];
+
+    for (final map in docs) {
+      final status = (map['status'] ?? 'pending').toString().toLowerCase();
+      if (status != 'pending') continue;
+
+      final id = map['id']?.toString() ?? '';
+      final type = map['type']?.toString() ?? '';
+      final payloadRaw = map['payload'];
+      final payload = payloadRaw is Map
+          ? Map<String, dynamic>.from(payloadRaw)
+          : <String, dynamic>{};
+      final createdAt =
+          DateTime.tryParse((map['createdAt'] ?? '').toString()) ??
+              DateTime.now();
+      final executeAtRaw = map['executeAt'];
+      final executeAt = executeAtRaw == null
+          ? null
+          : DateTime.tryParse(executeAtRaw.toString());
+
+      commands.add(RemoteCommand(
+        id: id,
+        type: type,
+        payload: payload,
+        createdAt: createdAt,
+        executeAt: executeAt,
+      ));
+    }
+
+    return commands;
+  }
+
+  Future<void> markCommandReceived(String deviceId, String commandId) async {
+    await setDocument('commands/$deviceId/items/$commandId', {
+      'status': 'received',
+      'receivedAt': DateTime.now().toIso8601String(),
+    });
+  }
+
+  Future<void> markCommandDone(
+    String deviceId,
+    String commandId, {
+    required bool success,
+    required String resultMessage,
+    Map<String, dynamic>? resultPayload,
+  }) async {
+    await setDocument('commands/$deviceId/items/$commandId', {
+      'status': success ? 'done' : 'error',
+      'success': success,
+      'resultMessage': resultMessage,
+      if (resultPayload != null) 'payload': resultPayload,
+      'finishedAt': DateTime.now().toIso8601String(),
+    });
+
+    await createDocumentWithId(
+      'command_results/$deviceId/items',
+      commandId,
+      {
+        'commandId': commandId,
+        'success': success,
+        'message': resultMessage,
+        'phase': 'final',
+        if (resultPayload != null) 'payload': resultPayload,
+        'createdAt': DateTime.now().toIso8601String(),
+      },
+    );
   }
 
   Future<void> createNotification({
@@ -255,145 +284,30 @@ class FirestoreRestClient {
     required String message,
     required String type,
     String severity = 'info',
-    Map<String, dynamic> payload = const {},
+    Map<String, dynamic>? payload,
   }) async {
-    final id = 'notif_${DateTime.now().microsecondsSinceEpoch}';
+    final id = DateTime.now().millisecondsSinceEpoch.toString();
     await createDocumentWithId('notifications/$deviceId/items', id, {
-      'deviceId': deviceId,
       'title': title,
       'message': message,
       'type': type,
       'severity': severity,
       'read': false,
-      'payload': payload,
+      if (payload != null) 'payload': payload,
       'createdAt': DateTime.now().toIso8601String(),
     });
   }
 
-  Future<void> createInstallChange({
-    required String deviceId,
-    required String appName,
-    required String changeType,
-    required Map<String, dynamic> payload,
-  }) async {
-    final id =
-        'install_${DateTime.now().millisecondsSinceEpoch}_${_safeDocumentId(appName)}';
-    final createdAt = DateTime.now().toIso8601String();
-    await createDocumentWithId('install_requests/$deviceId/items', id, {
-      'deviceId': deviceId,
-      'fileName': appName,
-      'filePath': (payload['installLocation'] ?? '').toString(),
-      'status': 'pending',
-      'type': changeType,
-      'details': payload,
-      'createdAt': createdAt,
-    });
-    try {
-      await createNotification(
-        deviceId: deviceId,
-        title: 'طلب تثبيت جديد',
-        message: 'يوجد طلب تثبيت بانتظار ردك: $appName',
-        type: 'install_request',
-        severity: 'warning',
-        payload: {'requestId': id, 'appName': appName, 'changeType': changeType},
-      );
-    } catch (_) {}
-  }
-
-  Future<List<RemoteCommand>> getPendingCommands(String deviceId) async {
-    final docs = await listDocuments('commands/$deviceId/items');
-    final now = DateTime.now();
-    return docs
-        .where((d) => (d['status'] ?? 'pending') == 'pending')
-        .map((d) {
-          final executeAt = DateTime.tryParse((d['executeAt'] ?? '').toString());
-          return RemoteCommand(
-            id: d['id'].toString(),
-            type: (d['type'] ?? '').toString(),
-            status: (d['status'] ?? 'pending').toString(),
-            payload: (d['payload'] is Map)
-                ? (d['payload'] as Map).cast<String, dynamic>()
-                : <String, dynamic>{},
-            createdBy: (d['createdBy'] ?? '').toString(),
-            createdAt: DateTime.tryParse((d['createdAt'] ?? '').toString()),
-            executeAt: executeAt,
-          );
-        })
-        .where((command) =>
-            command.executeAt == null || !command.executeAt!.isAfter(now))
-        .toList();
-  }
-
-  /// تأكيد فوري أن الكمبيوتر استلم الأمر. هذا يحل خطأ markCommandReceived غير موجود.
-  Future<void> markCommandReceived(
-    String deviceId,
-    String commandId, {
-    required String type,
-    required String message,
-  }) async {
-    await setDocument('commands/$deviceId/items/$commandId', {
-      'status': 'processing',
-      'receivedAt': DateTime.now().toIso8601String(),
-      'acknowledgedAt': DateTime.now().toIso8601String(),
-      'ackMessage': message,
-      'resultMessage': message,
-      'agentState': 'received',
-      'type': type,
-    });
-  }
-
-  Future<void> markCommandExecuted(
-    String deviceId,
-    String commandId, {
-    required bool success,
-    required String message,
-  }) async {
-    await setDocument('commands/$deviceId/items/$commandId', {
-      'status': success ? 'executed' : 'failed',
-      'executedAt': DateTime.now().toIso8601String(),
-      'resultMessage': message,
-      'agentState': success ? 'done' : 'error',
-    });
-
-    if (config.deleteCommandsAfterExecution) {
-      await deleteDocument('commands/$deviceId/items/$commandId');
-    }
-  }
-
-  /// يقبل 6 أو 7 معاملات حتى لا يظهر خطأ: Too many positional arguments.
-  Future<void> writeResponse(
-    String deviceId,
-    String commandId,
-    String type,
-    bool success,
-    String message, [
-    Map<String, dynamic>? payload,
-    String phase = 'final',
-  ]) async {
-    await createDocumentWithId(
-      'responses/$deviceId/items',
-      '${commandId}_${phase}_${DateTime.now().millisecondsSinceEpoch}',
-      {
-        'commandId': commandId,
-        'type': type,
-        'phase': phase,
-        'success': success,
-        'message': message,
-        'payload': payload ?? <String, dynamic>{},
-        'createdAt': DateTime.now().toIso8601String(),
-      },
-    );
-  }
-
   Future<void> createPermissionRequest({
+    required String id,
     required String deviceId,
+    required String ruleId,
     required String path,
     required String openedPath,
-    required String ruleId,
   }) async {
-    final id = 'perm_${DateTime.now().millisecondsSinceEpoch}';
     final createdAt = DateTime.now().toIso8601String();
     await createDocumentWithId('permission_requests/$deviceId/items', id, {
+      'id': id,
       'deviceId': deviceId,
       'ruleId': ruleId,
       'path': path,
@@ -497,28 +411,31 @@ class FirestoreRestClient {
     return null;
   }
 
+  Map<String, dynamic> _flattenDocument(Map<String, dynamic> doc) {
+    final name = (doc['name'] ?? '').toString();
+    final id = name.split('/').last;
+    final fields = (doc['fields'] as Map?)?.cast<String, dynamic>() ?? const {};
+    return {
+      'id': id,
+      ..._fromFields(fields),
+    };
+  }
+
   bool _looksLikeIsoDate(String value) {
-    if (value.length < 16) return false;
-    return DateTime.tryParse(value) != null;
+    return RegExp(r'^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}').hasMatch(value);
   }
 
   Future<http.Response> _get(Uri uri, {Map<String, String>? headers}) {
     return http.get(uri, headers: headers).timeout(_httpTimeout);
   }
 
-  Future<http.Response> _post(
-    Uri uri, {
-    Map<String, String>? headers,
-    Object? body,
-  }) {
+  Future<http.Response> _post(Uri uri,
+      {Map<String, String>? headers, Object? body}) {
     return http.post(uri, headers: headers, body: body).timeout(_httpTimeout);
   }
 
-  Future<http.Response> _patch(
-    Uri uri, {
-    Map<String, String>? headers,
-    Object? body,
-  }) {
+  Future<http.Response> _patch(Uri uri,
+      {Map<String, String>? headers, Object? body}) {
     return http.patch(uri, headers: headers, body: body).timeout(_httpTimeout);
   }
 
@@ -527,24 +444,22 @@ class FirestoreRestClient {
   }
 
   Future<Map<String, String>> _headers({bool jsonBody = false}) async {
-    final headers = <String, String>{};
-    if (jsonBody) headers['Content-Type'] = 'application/json';
-
-    final token = await _getIdToken();
+    final map = <String, String>{};
+    if (jsonBody) map['Content-Type'] = 'application/json';
+    final token = await _getToken();
     if (token != null && token.isNotEmpty) {
-      headers['Authorization'] = 'Bearer $token';
+      map['Authorization'] = 'Bearer $token';
     }
-    return headers;
+    return map;
   }
 
-  Future<String?> _getIdToken() async {
-    if (_anonymousAuthUnavailable || config.apiKey.trim().isEmpty) return null;
-
+  Future<String?> _getToken() async {
+    if (_anonymousAuthUnavailable || config.apiKey.isEmpty) return null;
     await _loadCachedAuth();
-    final now = DateTime.now();
+
     if (_idToken != null &&
         _tokenExpiresAt != null &&
-        _tokenExpiresAt!.isAfter(now.add(const Duration(minutes: 5)))) {
+        _tokenExpiresAt!.isAfter(DateTime.now().add(const Duration(minutes: 2)))) {
       return _idToken;
     }
 

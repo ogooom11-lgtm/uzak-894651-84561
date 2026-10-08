@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:uuid/uuid.dart';
@@ -91,7 +92,7 @@ class TelegramCommandService {
     if (allowedChatId.isEmpty) {
       await telegram.sendMessage(
         '👋 مرحباً! معرف المحادثة (Chat ID) الخاص بك هو:\n<code>$chatId</code>\n\n'
-        'انسخه وضعه في تطبيق الهاتف (KIMO) لربط البوت بهذا الكمبيوتر فوراً.',
+        'انسخه وضعه في تطبيق الهاتف (KIMO) لربط البوت بهذا الكمبيوتر فوراً كقاعدة بيانات وسحابة تحكم.',
         chatId: chatId,
         replyToMessageId: messageId,
       );
@@ -117,6 +118,18 @@ class TelegramCommandService {
     final text = (message['text'] ?? '').toString().trim();
     if (text.isEmpty) return;
 
+    // 2. Handle Mobile App Cloud Database Protocol (#KIOM_CMD)
+    if (text.startsWith('#KIOM_CMD')) {
+      final jsonStr = text.substring('#KIOM_CMD'.length).trim();
+      await _handleMobileCloudCommand(jsonStr, chatId: chatId);
+      return;
+    }
+
+    // Ignore other agent broadcasts
+    if (text.startsWith('#KIOM_')) {
+      return;
+    }
+
     final handled = await _handleControlCommand(
       text,
       chatId: chatId,
@@ -129,6 +142,63 @@ class TelegramCommandService {
       chatId: chatId,
       replyToMessageId: messageId,
     );
+  }
+
+  Future<void> _handleMobileCloudCommand(String jsonStr, {required String chatId}) async {
+    try {
+      final envelope = jsonDecode(jsonStr) as Map<String, dynamic>;
+      final targetDeviceId = (envelope['deviceId'] ?? '').toString();
+      if (targetDeviceId.isNotEmpty && targetDeviceId != deviceId) return;
+
+      final commandId = (envelope['id'] ?? const Uuid().v4()).toString();
+      final type = (envelope['type'] ?? '').toString();
+      final payload = envelope['payload'] is Map
+          ? Map<String, dynamic>.from(envelope['payload'] as Map)
+          : <String, dynamic>{};
+
+      final result = await executor.executeTelegramCommand(
+        type: type,
+        payload: payload,
+      );
+
+      final res = {
+        'id': commandId,
+        'commandId': commandId,
+        'deviceId': deviceId,
+        'type': type,
+        'success': result.success,
+        'message': result.message,
+        'phase': 'final',
+        'payload': result.payload,
+        'createdAt': DateTime.now().toIso8601String(),
+      };
+
+      final body = jsonEncode(res);
+      await telegram.sendMessage(
+        '#KIOM_RES\n$body',
+        chatId: chatId,
+        parseMode: '',
+      );
+
+      if (type == 'browse_path' || type == 'search_files') {
+        final fileRes = {
+          'commandId': commandId,
+          'requestId': payload['requestId'] ?? commandId,
+          'path': payload['path'] ?? 'roots',
+          'items': result.payload['items'] ?? const [],
+        };
+        final fileBody = jsonEncode(fileRes);
+        await telegram.sendMessage(
+          '#KIOM_FILE_RES\n$fileBody',
+          chatId: chatId,
+          parseMode: '',
+        );
+      }
+    } catch (e, st) {
+      await store.appendLog('telegram_mobile_cmd_error', e.toString(), {
+        'stack': st.toString(),
+      });
+    }
   }
 
   Future<void> _handleIncomingFile(
@@ -175,7 +245,6 @@ class TelegramCommandService {
       return;
     }
 
-    // Determine target save folder
     String targetFolder = '';
     if (caption.isNotEmpty) {
       if (caption.toLowerCase() == 'desktop' || caption == 'سطح المكتب') {
@@ -195,7 +264,7 @@ class TelegramCommandService {
     }
 
     await telegram.sendMessage(
-      '⏳ جاري تنزيل وحفظ الملف على الكمبيوتر...\n'
+      '⏳ <b>جاري تنزيل وحفظ الملف على الكمبيوتر...</b>\n'
       '📄 الاسم: <b>$fileName</b>\n'
       '📁 الوجهة: <code>$targetFolder</code>',
       chatId: chatId,
@@ -319,8 +388,8 @@ class TelegramCommandService {
     if (data == 'menu_files') {
       await telegram.sendMessage(
         '📁 <b>إدارة الملفات بالكمبيوتر:</b>\n\n'
-        '• تصفح الأقراص والمجلدات\n'
-        '• <code>/get C:\\path\\file.pdf</code> لإرسال ملف لتليجرام\n'
+        '• تصفح الأقراص والمجلدات المباشرة\n'
+        '• <code>/get C:\\path\\file.pdf</code> لإرسال أي ملف لتليجرام\n'
         '• <code>/search تقرير</code> للبحث عن ملفات\n'
         '• أو أرسل أي ملف للمحادثة وسيتم حفظه في الكمبيوتر فوراً!',
         chatId: chatId,
@@ -341,8 +410,8 @@ class TelegramCommandService {
     }
     if (data == 'menu_power') {
       await telegram.sendMessage(
-        '🔒 <b>الطاقة والقفل والجدولة:</b>\n'
-        'قفل الشاشة، إغلاق، إعادة التشغيل، أو تسجيل الخروج:',
+        '🔒 <b>الطاقة والقفل والجدولة الذكية:</b>\n'
+        'اختر مدة القفل أو وقت إغلاق الجهاز:',
         chatId: chatId,
         replyToMessageId: messageId,
         replyMarkup: _powerInlineMenu(),
@@ -360,7 +429,7 @@ class TelegramCommandService {
     }
     if (data == 'menu_network') {
       await telegram.sendMessage(
-        '🌐 <b>التحكم بالشبكة والبلوتوث:</b>\nتشغيل وإيقاف WiFi والإنترنت والبلوتوث:',
+        '🌐 <b>التحكم بالشبكة والبلوتوث:</b>\nتشغيل وإيقاف WiFi والإنترنت والبلوتوث بنقرة واحدة:',
         chatId: chatId,
         replyToMessageId: messageId,
         replyMarkup: _networkInlineMenu(),
@@ -369,10 +438,19 @@ class TelegramCommandService {
     }
     if (data == 'menu_audio') {
       await telegram.sendMessage(
-        '🔊 <b>التحكم بمستوى الصوت:</b>\nرفع، خفض، كتم، أو تحديد النسبة:',
+        '🔊 <b>التحكم السريع بمستوى الصوت:</b>\nاختر النسبة المطلوبة فوراً:',
         chatId: chatId,
         replyToMessageId: messageId,
         replyMarkup: _audioInlineMenu(),
+      );
+      return;
+    }
+    if (data == 'menu_messages') {
+      await telegram.sendMessage(
+        '💬 <b>إرسال رسائل وتنبيهات لشاشة الكمبيوتر:</b>\nاختر قالباً جاهزاً أو اكتب <code>/msg نص_الرسالة</code>:',
+        chatId: chatId,
+        replyToMessageId: messageId,
+        replyMarkup: _messagesInlineMenu(),
       );
       return;
     }
@@ -462,7 +540,6 @@ class TelegramCommandService {
       return;
     }
 
-    // Check if the command is dangerous and needs user confirmation
     if (_isDangerousCommand(parsed.type, parsed.payload)) {
       final token = const Uuid().v4().substring(0, 8);
       _pendingConfirmations[token] = _PendingConfirmation(
@@ -509,7 +586,7 @@ class TelegramCommandService {
     int? replyToMessageId,
   }) async {
     await telegram.sendMessage(
-      '⏳ <b>تم استلام الأمر:</b> ${parsed.type}\n🖥️ <b>الجهاز:</b> $deviceName',
+      '⏳ <b>تم استلام الأمر:</b> <code>${parsed.type}</code>\n🖥️ <b>الجهاز:</b> $deviceName',
       chatId: chatId,
       replyToMessageId: replyToMessageId,
     );
@@ -705,7 +782,8 @@ class TelegramCommandService {
     if (lower == 'screenshot' ||
         lower == 'screen' ||
         lower == 'لقطة' ||
-        lower == 'صورة الشاشة') {
+        lower == 'صورة الشاشة' ||
+        lower == 'صور الشاشة') {
       return const _ParsedTelegramCommand('request_screenshot');
     }
     if (lower == 'emergency' || lower == 'طوارئ' || lower == 'وضع الطوارئ') {
@@ -740,10 +818,10 @@ class TelegramCommandService {
         minutes == null ? const {} : {'minutes': minutes},
       );
     }
-    if (lower == 'unlock' || lower == 'فتح' || lower == 'clear lock') {
+    if (lower == 'unlock' || lower == 'فتح' || lower == 'clear lock' || lower == 'إلغاء القفل') {
       return const _ParsedTelegramCommand('clear_timed_lock');
     }
-    if (lower == 'shutdown' || lower == 'اطفاء' || lower == 'إغلاق') {
+    if (lower == 'shutdown' || lower == 'اطفاء' || lower == 'إغلاق' || lower == 'اطفئ الجهاز') {
       return const _ParsedTelegramCommand('shutdown_pc');
     }
     if (lower == 'restart' || lower == 'اعادة تشغيل' || lower == 'إعادة تشغيل') {
@@ -760,16 +838,16 @@ class TelegramCommandService {
         return _ParsedTelegramCommand('set_volume', {'volume': volume});
       }
     }
-    if (lower == 'volup' || lower == 'vol+' || lower == 'volume up' || lower == 'رفع الصوت') {
+    if (lower == 'volup' || lower == 'vol+' || lower == 'volume up' || lower == 'رفع الصوت' || lower == 'علي الصوت') {
       return const _ParsedTelegramCommand('volume_up');
     }
-    if (lower == 'voldown' || lower == 'vol-' || lower == 'volume down' || lower == 'خفض الصوت') {
+    if (lower == 'voldown' || lower == 'vol-' || lower == 'volume down' || lower == 'خفض الصوت' || lower == 'وطي الصوت') {
       return const _ParsedTelegramCommand('volume_down');
     }
-    if (lower == 'mute' || lower == 'كتم') {
+    if (lower == 'mute' || lower == 'كتم' || lower == 'كتم الصوت') {
       return const _ParsedTelegramCommand('mute_volume');
     }
-    if (lower == 'unmute' || lower == 'الغاء كتم') {
+    if (lower == 'unmute' || lower == 'الغاء كتم' || lower == 'إلغاء الكتم') {
       return const _ParsedTelegramCommand('unmute_volume');
     }
 
@@ -788,13 +866,15 @@ class TelegramCommandService {
     if (lower == 'internet off' ||
         lower == 'net off' ||
         lower == 'ايقاف الانترنت نهائيا' ||
-        lower == 'إيقاف الانترنت نهائياً') {
+        lower == 'إيقاف الانترنت نهائياً' ||
+        lower == 'قطع الانترنت') {
       return const _ParsedTelegramCommand('internet_off_permanent');
     }
     if (lower == 'internet on' ||
         lower == 'net on' ||
         lower == 'تشغيل الانترنت' ||
-        lower == 'تشغيل الإنترنت') {
+        lower == 'تشغيل الإنترنت' ||
+        lower == 'اعادة الانترنت') {
       return const _ParsedTelegramCommand('internet_on');
     }
 
@@ -1121,12 +1201,24 @@ class TelegramCommandService {
         return 'emergency';
       case 'lock':
         return 'lock';
+      case 'lock_5':
+        return 'lock 5';
+      case 'lock_15':
+        return 'lock 15';
       case 'lock_30':
         return 'lock 30';
+      case 'lock_60':
+        return 'lock 60';
+      case 'lock_120':
+        return 'lock 120';
       case 'unlock':
         return 'unlock';
       case 'shutdown':
         return 'shutdown';
+      case 'shutdown_15':
+        return 'shutdown 15';
+      case 'shutdown_30':
+        return 'shutdown 30';
       case 'restart':
         return 'restart';
       case 'logout':
@@ -1163,6 +1255,8 @@ class TelegramCommandService {
         return 'mute';
       case 'vol_unmute':
         return 'unmute';
+      case 'vol_10':
+        return 'volume 10';
       case 'vol_25':
         return 'volume 25';
       case 'vol_50':
@@ -1191,6 +1285,12 @@ class TelegramCommandService {
         return 'qr';
       case 'permissions':
         return 'permissions';
+      case 'msg_break':
+        return 'message حان وقت الاستراحة، يرجى الابتعاد عن الشاشة.';
+      case 'msg_save':
+        return 'message تنبيه: يرجى حفظ جميع أعمالك وإغلاق البرامج.';
+      case 'msg_urgent':
+        return 'message تنبيه عاجل: مطلوب التحدث مع مسؤول النظام.';
       case 'browse_downloads':
         return 'browse ${_getKnownFolder('Downloads')}';
       case 'browse_desktop':
@@ -1209,7 +1309,7 @@ class TelegramCommandService {
   }
 
   String _dashboardText() {
-    return '⚡ <b>لوحة تحكم KIOM التفاعلية بالكمبيوتر:</b>\n'
+    return '⚡ <b>لوحة تحكم KIOM التفاعلية بالكمبيوتر (سحابة Telegram):</b>\n'
         '🖥️ <b>الجهاز:</b> $deviceName ($deviceId)\n\n'
         'اختر أحد الأقسام أدناه للتحكم الشامل، أو أرسل أي ملف للمحادثة ليتم حفظه بالكمبيوتر فوراً:';
   }
@@ -1235,9 +1335,10 @@ class TelegramCommandService {
         [
           button('🎛️ الأوضاع الذكية', 'menu_modes'),
           button('🌐 الشبكة والبلوتوث', 'menu_network'),
-          button('🔊 الصوت', 'menu_audio'),
+          button('🔊 التحكم بالصوت', 'menu_audio'),
         ],
         [
+          button('💬 إرسال رسالة', 'menu_messages'),
           button('📈 السجلات والتحليلات', 'menu_insights'),
           button('🛡️ الأمان والحماية', 'menu_security'),
         ],
@@ -1310,15 +1411,24 @@ class TelegramCommandService {
     return {
       'inline_keyboard': [
         [
-          button('🔒 قفل الشاشة فوراً', 'lock'),
-          button('⏱️ قفل لمدة 30 دقيقة', 'lock_30'),
-          button('🔓 إلغاء القفل', 'unlock'),
+          button('⏱️ قفل 5 دقائق', 'lock_5'),
+          button('⏱️ قفل 15 دقيقة', 'lock_15'),
+          button('⏱️ قفل 30 دقيقة', 'lock_30'),
         ],
         [
-          button('🔴 إغلاق الكمبيوتر (Shutdown)', 'shutdown'),
+          button('⏱️ قفل ساعة', 'lock_60'),
+          button('⏱️ قفل ساعتين', 'lock_120'),
+          button('🔒 قفل دائم', 'lock'),
+        ],
+        [
+          button('🔓 إلغاء وفتح القفل', 'unlock'),
+        ],
+        [
+          button('🔴 إغلاق الكمبيوتر فوراً', 'shutdown'),
+          button('⏱️ إغلاق بعد 30د', 'shutdown_30'),
+        ],
+        [
           button('🔄 إعادة التشغيل (Restart)', 'restart'),
-        ],
-        [
           button('👤 تسجيل الخروج', 'logout'),
         ],
         [
@@ -1379,7 +1489,7 @@ class TelegramCommandService {
           button('⚫ إيقاف Bluetooth', 'bt_off'),
         ],
         [
-          button('📱 أجهزة Bluetooth', 'bt_devices'),
+          button('📱 فحص أجهزة Bluetooth', 'bt_devices'),
         ],
         [
           button('🔙 العودة للوحة الرئيسية', 'menu_main'),
@@ -1397,18 +1507,43 @@ class TelegramCommandService {
     return {
       'inline_keyboard': [
         [
-          button('🔊 رفع الصوت (+10%)', 'vol_up'),
-          button('🔉 خفض الصوت (-10%)', 'vol_down'),
-        ],
-        [
           button('🔇 كتم الصوت', 'vol_mute'),
           button('🔊 إلغاء الكتم', 'vol_unmute'),
         ],
         [
+          button('➕ +10%', 'vol_up'),
+          button('➖ -10%', 'vol_down'),
+        ],
+        [
+          button('10%', 'vol_10'),
           button('25%', 'vol_25'),
           button('50%', 'vol_50'),
           button('75%', 'vol_75'),
           button('100%', 'vol_100'),
+        ],
+        [
+          button('🔙 العودة للوحة الرئيسية', 'menu_main'),
+        ],
+      ],
+    };
+  }
+
+  Map<String, dynamic> _messagesInlineMenu() {
+    Map<String, String> button(String text, String data) => {
+          'text': text,
+          'callback_data': data,
+        };
+
+    return {
+      'inline_keyboard': [
+        [
+          button('☕ حان وقت الاستراحة', 'msg_break'),
+        ],
+        [
+          button('💾 تنبيه: يرجى حفظ العمل', 'msg_save'),
+        ],
+        [
+          button('⚠️ تنبيه عاجل من الإدارة', 'msg_urgent'),
         ],
         [
           button('🔙 العودة للوحة الرئيسية', 'menu_main'),
@@ -1464,7 +1599,7 @@ class TelegramCommandService {
   }
 
   String _helpText() {
-    return '📖 <b>الدليل الشامل للتحكم بالكمبيوتر عبر Telegram:</b>\n\n'
+    return '📖 <b>الدليل الشامل للتحكم بالكمبيوتر عبر سحابة Telegram:</b>\n\n'
         '📁 <b>الملفات وتبادل البيانات:</b>\n'
         '• أرسل أي ملف للمحادثة وسيتم حفظه في <code>Downloads</code> بالكمبيوتر تلقائياً.\n'
         '• <code>/get C:\\path\\file.ext</code>: إرسال أي ملف من الكمبيوتر إلى Telegram.\n'
@@ -1485,11 +1620,14 @@ class TelegramCommandService {
         '• <code>screenshot</code>: لقطة شاشة فورية.\n'
         '• <code>health</code>: صحة الجهاز (CPU, RAM, Disks).\n'
         '• <code>lock</code>: قفل شاشة الكمبيوتر.\n'
+        '• <code>lock 30</code>: قفل لمدة 30 دقيقة.\n'
+        '• <code>unlock</code>: إلغاء القفل.\n'
         '• <code>emergency</code>: وضع الطوارئ الشامل.\n'
         '• <code>shutdown</code>: إغلاق الكمبيوتر (مع زر تأكيد).\n'
         '• <code>restart</code>: إعادة التشغيل (مع زر تأكيد).\n'
         '• <code>wifi on/off</code> | <code>internet on/off</code> | <code>bt on/off</code>\n'
         '• <code>volume 50</code> | <code>volup</code> | <code>voldown</code> | <code>mute</code>\n'
+        '• <code>msg مرحباً</code>: إظهار رسالة منبثقة على شاشة الكمبيوتر.\n'
         '• <code>mode study/work/kids/protection</code>: الأوضاع الذكية.\n'
         '• <code>privacy on/off</code>: وضع الخصوصية.\n'
         '• <code>undo</code>: التراجع عن آخر أمر.';

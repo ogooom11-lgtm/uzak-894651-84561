@@ -7,6 +7,7 @@ import '../core/app_formatters.dart';
 import '../core/command_type.dart';
 import '../models/pc_device.dart';
 import '../repositories/device_repository.dart';
+import '../repositories/telegram_device_repository.dart';
 import '../widgets/app_snack.dart';
 
 class TelegramSetupScreen extends StatefulWidget {
@@ -36,6 +37,15 @@ class _TelegramSetupScreenState extends State<TelegramSetupScreen> {
   final _chatIdController = TextEditingController();
   bool _sending = false;
   bool _testing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.device?.telegramChatId != null &&
+        widget.device!.telegramChatId!.isNotEmpty) {
+      _chatIdController.text = widget.device!.telegramChatId!;
+    }
+  }
 
   @override
   void dispose() {
@@ -96,6 +106,9 @@ class _TelegramSetupScreenState extends State<TelegramSetupScreen> {
     setState(() => _sending = true);
     try {
       final repo = context.read<DeviceRepository>();
+      if (repo is TelegramDeviceRepository) {
+        await repo.updateConfig(chat: chatId);
+      }
       final commandId = await repo.sendCommand(
         userId: widget.userId,
         deviceId: widget.deviceId,
@@ -115,7 +128,7 @@ class _TelegramSetupScreenState extends State<TelegramSetupScreen> {
       if (response == null) {
         showAppSnack(
           context,
-          'تم إرسال Chat ID للكمبيوتر. سيبدأ البوت بالعمل فوراً.',
+          'تم إرسال Chat ID للكمبيوتر. سيبدأ البوت بالعمل فوراً كقاعدة بيانات.',
         );
       } else if (response.success) {
         showAppSnack(
@@ -150,12 +163,12 @@ class _TelegramSetupScreenState extends State<TelegramSetupScreen> {
       );
       if (!mounted) return;
       if (response != null && response.success) {
-        showAppSnack(context, 'تم فحص الاتصال: الكمبيوتر متصل ويرسل لـ Telegram.');
+        showAppSnack(context, 'تم التحقق من الاتصال بنجاح!');
       } else {
-        showAppSnack(context, 'الكمبيوتر استلم الأمر وجاري معالجته.');
+        showAppSnack(context, 'تم إرسال اختبار الاتصال للبوت.');
       }
     } catch (e) {
-      if (mounted) showAppSnack(context, 'فشل إرسال الفحص: $e', error: true);
+      if (mounted) showAppSnack(context, 'فشل إرسال اختبار الاتصال: $e', error: true);
     } finally {
       if (mounted) setState(() => _testing = false);
     }
@@ -164,346 +177,299 @@ class _TelegramSetupScreenState extends State<TelegramSetupScreen> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final deviceName = widget.device?.name ?? widget.deviceName ?? widget.deviceId;
-    final isLinked = widget.device?.isTelegramLinked == true;
+    final isLinked = widget.device?.isTelegramLinked ?? false;
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.afterPairing ? 'ربط Telegram' : 'إعداد Telegram'),
-        actions: [
-          if (widget.afterPairing)
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('تخطي الآن'),
-            ),
-        ],
+        title: const Text('ربط بوت Telegram'),
       ),
       body: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(20),
         children: [
+          // Banner
           Container(
-            padding: const EdgeInsets.all(22),
+            padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(28),
-              gradient: LinearGradient(
+              gradient: const LinearGradient(
+                colors: [Color(0xFF0088CC), Color(0xFF005580)],
                 begin: Alignment.topRight,
                 end: Alignment.bottomLeft,
-                colors: [const Color(0xFF0284C7), cs.primary],
               ),
+              borderRadius: BorderRadius.circular(24),
               boxShadow: [
                 BoxShadow(
-                  color: const Color(0xFF0284C7).withValues(alpha: .22),
-                  blurRadius: 24,
-                  offset: const Offset(0, 12),
+                  color: const Color(0xFF0088CC).withValues(alpha: .30),
+                  blurRadius: 16,
+                  offset: const Offset(0, 8),
                 ),
               ],
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      width: 52,
-                      height: 52,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: .20),
-                        borderRadius: BorderRadius.circular(18),
-                      ),
-                      child: const Icon(Icons.send_rounded, color: Colors.white, size: 30),
-                    ),
-                    const SizedBox(width: 14),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            widget.afterPairing
-                                ? 'خطوة أخيرة: ربط Telegram'
-                                : 'ربط بوت Telegram',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 21,
-                              fontWeight: FontWeight.w900,
-                            ),
-                          ),
-                          const SizedBox(height: 3),
-                          Text(
-                            'الجهاز: $deviceName',
-                            style: const TextStyle(color: Colors.white70, fontSize: 13),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 14),
-                const Text(
-                  'اربط محادثة Telegram لتصلك تنبيهات الكمبيوتر الفورية، وإمكانية إرسال الأوامر والتقاط الشاشة مباشرة من تليجرام.',
-                  style: TextStyle(color: Colors.white, height: 1.5, fontSize: 13.5),
-                ),
-              ],
-            ),
-          ),
-          if (isLinked) ...[
-            const SizedBox(height: 14),
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: const Color(0xFF16A34A).withValues(alpha: .12),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: const Color(0xFF16A34A).withValues(alpha: .30)),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.check_circle_rounded, color: Color(0xFF16A34A), size: 28),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Telegram مربوط حالياً بهذا الجهاز',
-                          style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14.5),
-                        ),
-                        const SizedBox(height: 3),
-                        Text(
-                          'معرّف المحادثة: ${widget.device?.telegramChatId ?? 'مفعّل'}'
-                          '${widget.device?.telegramLinkedAt != null ? ' • منذ ${AppFormatters.dateTime(widget.device!.telegramLinkedAt!)}' : ''}',
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-          const SizedBox(height: 16),
-          _StepCard(
-            stepNumber: '1',
-            title: 'افتح بوت Telegram الرسمي',
-            description: 'اضغط على الزر لفتح البوت مباشرة في تطبيق Telegram، ثم اضغط على زر Start.',
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+            child: Row(
               children: [
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  width: 52,
+                  height: 52,
                   decoration: BoxDecoration(
-                    color: cs.surfaceContainerHighest,
-                    borderRadius: BorderRadius.circular(14),
+                    color: Colors.white.withValues(alpha: .2),
+                    shape: BoxShape.circle,
                   ),
-                  child: Row(
+                  child: const Icon(
+                    Icons.send_rounded,
+                    color: Colors.white,
+                    size: 28,
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Icon(Icons.link_rounded, size: 20),
-                      const SizedBox(width: 8),
-                      const Expanded(
-                        child: Text(
-                          '@${TelegramSetupScreen.botUsername}',
-                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5),
-                          textDirection: TextDirection.ltr,
+                      const Text(
+                        'قاعدة بيانات وسحابة Telegram',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 17,
+                          fontWeight: FontWeight.w900,
                         ),
                       ),
-                      IconButton(
-                        tooltip: 'نسخ الرابط',
-                        onPressed: _copyLink,
-                        icon: const Icon(Icons.copy_rounded, size: 20),
+                      const SizedBox(height: 3),
+                      Text(
+                        isLinked
+                            ? '✅ الجهاز متصل بسحابة Telegram كقاعدة بيانات'
+                            : 'اربط البوت للتحكم واستقبال الأوامر والملفات السحابية',
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 12.5,
+                        ),
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(height: 10),
-                Row(
-                  children: [
-                    Expanded(
-                      child: FilledButton.icon(
-                        onPressed: _openBot,
-                        icon: const Icon(Icons.open_in_new_rounded),
-                        label: const Text('فتح في Telegram'),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    OutlinedButton.icon(
-                      onPressed: _copyLink,
-                      icon: const Icon(Icons.copy_rounded),
-                      label: const Text('نسخ'),
-                    ),
-                  ],
-                ),
               ],
             ),
           ),
-          const SizedBox(height: 12),
-          _StepCard(
-            stepNumber: '2',
-            title: 'انسخ الـ Chat ID من البوت',
-            description: 'عند الضغط على Start أو إرسال أي رسالة للبوت، سيرد عليك فوراً برقم المعرف (Chat ID). انسخه بالكامل.',
+          const SizedBox(height: 20),
+
+          // Steps
+          _buildStepCard(
+            step: '1',
+            title: 'افتح بوت Telegram الرسمي',
+            description: 'اضغط على الزر أدناه لفتح البوت والضغط على Start (بدء).',
+            action: ElevatedButton.icon(
+              onPressed: _openBot,
+              icon: const Icon(Icons.open_in_new_rounded, size: 18),
+              label: const Text('فتح البوت في Telegram'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF0088CC),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+              ),
+            ),
           ),
           const SizedBox(height: 12),
-          _StepCard(
-            stepNumber: '3',
-            title: 'الصق المعرف واحفظ الربط',
-            description: 'الصق الرقم هنا واضغط "حفظ وربط مع الكمبيوتر" لإرساله للكمبيوتر وتفعيل البوت.',
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+
+          _buildStepCard(
+            step: '2',
+            title: 'انسخ معرّف المحادثة (Chat ID)',
+            description:
+                'بعد الضغط على Start، سيرسل لك البوت رسالة ترحيبية تحتوي على Chat ID الخاص بك. انسخه.',
+            action: OutlinedButton.icon(
+              onPressed: _copyLink,
+              icon: const Icon(Icons.copy_rounded, size: 16),
+              label: const Text('نسخ رابط البوت'),
+              style: OutlinedButton.styleFrom(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+
+          _buildStepCard(
+            step: '3',
+            title: 'الصق Chat ID واضغط تفعيل',
+            description: 'الصق المعرف في الحقل أدناه ليتم ربطه بالكمبيوتر وسحابة التطبيق فوراً.',
+            action: Column(
               children: [
                 TextField(
                   controller: _chatIdController,
-                  textDirection: TextDirection.ltr,
-                  keyboardType: const TextInputType.numberWithOptions(signed: true),
+                  keyboardType: TextInputType.number,
                   decoration: InputDecoration(
-                    labelText: 'Telegram Chat ID',
-                    hintText: 'مثال: 123456789 أو -100123456789',
-                    prefixIcon: const Icon(Icons.numbers_rounded),
+                    labelText: 'Chat ID',
+                    hintText: 'مثال: 123456789',
+                    prefixIcon: const Icon(Icons.tag_rounded),
                     suffixIcon: IconButton(
+                      icon: const Icon(Icons.content_paste_rounded),
                       tooltip: 'لصق من الحافظة',
                       onPressed: _pasteFromClipboard,
-                      icon: const Icon(Icons.content_paste_rounded),
                     ),
                   ),
-                ),
-                const SizedBox(height: 10),
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: _pasteFromClipboard,
-                        icon: const Icon(Icons.content_paste_rounded),
-                        label: const Text('لصق من الحافظة'),
-                      ),
-                    ),
-                  ],
                 ),
                 const SizedBox(height: 12),
-                FilledButton.icon(
-                  onPressed: _sending ? null : _saveChatId,
-                  style: FilledButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                  ),
-                  icon: _sending
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                        )
-                      : const Icon(Icons.bolt_rounded),
-                  label: Text(
-                    _sending ? 'جاري الربط مع الكمبيوتر...' : '⚡ حفظ وإرسال للكمبيوتر',
-                    style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: _sending ? null : _saveChatId,
+                    icon: _sending
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Icon(Icons.cloud_done_rounded),
+                    label: Text(
+                      _sending
+                          ? 'جاري الربط والحفظ...'
+                          : (isLinked ? 'تحديث وتثبيت السحابة' : 'ربط البوت كقاعدة بيانات'),
+                    ),
+                    style: FilledButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                    ),
                   ),
                 ),
-                if (isLinked) ...[
-                  const SizedBox(height: 10),
-                  TextButton.icon(
-                    onPressed: _testing ? null : _sendTestAlert,
-                    icon: _testing
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.send_rounded),
-                    label: const Text('إرسال فحص اتصال تجريبي للكمبيوتر وTelegram'),
-                  ),
-                ],
               ],
             ),
           ),
-          const SizedBox(height: 14),
-          Card(
-            color: cs.surfaceContainerHighest.withValues(alpha: .5),
-            child: Padding(
-              padding: const EdgeInsets.all(14),
-              child: Row(
+          const SizedBox(height: 20),
+
+          // Test section if already linked
+          if (isLinked) ...[
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: cs.surfaceContainerHighest.withValues(alpha: .5),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: Colors.green.withValues(alpha: .3),
+                ),
+              ),
+              child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(Icons.info_outline_rounded, color: cs.primary, size: 22),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      'يتم تخزين معرف المحادثة بأمان على الكمبيوتر فقط. بمجرد الربط، يمكنك كتابة status أو screenshot أو emergency أو lock داخل تليجرام للتحكم مباشرة.',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(height: 1.5),
+                  const Row(
+                    children: [
+                      Icon(Icons.check_circle_rounded, color: Colors.green, size: 20),
+                      SizedBox(width: 8),
+                      Text(
+                        'الجهاز مربوط بنجاح',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: Colors.green,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'معرّف Chat ID: ${widget.device!.telegramChatId}',
+                    style: const TextStyle(fontSize: 13, fontFamily: 'monospace'),
+                  ),
+                  if (widget.device?.telegramLinkedAt != null)
+                    Text(
+                      'تاريخ الربط: ${formatDate(widget.device!.telegramLinkedAt!)}',
+                      style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+                    ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: _testing ? null : _sendTestAlert,
+                      icon: _testing
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.notifications_active_outlined, size: 18),
+                      label: const Text('إرسال اختبار اتصال بالكمبيوتر'),
+                      style: OutlinedButton.styleFrom(
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                      ),
                     ),
                   ),
                 ],
               ),
             ),
-          ),
-          const SizedBox(height: 24),
+          ],
         ],
       ),
     );
   }
-}
 
-class _StepCard extends StatelessWidget {
-  const _StepCard({
-    required this.stepNumber,
-    required this.title,
-    required this.description,
-    this.child,
-  });
-
-  final String stepNumber;
-  final String title;
-  final String description;
-  final Widget? child;
-
-  @override
-  Widget build(BuildContext context) {
+  Widget _buildStepCard({
+    required String step,
+    required String title,
+    required String description,
+    required Widget action,
+  }) {
     final cs = Theme.of(context).colorScheme;
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  width: 32,
-                  height: 32,
-                  decoration: BoxDecoration(
-                    color: cs.primary,
-                    shape: BoxShape.circle,
-                  ),
-                  alignment: Alignment.center,
-                  child: Text(
-                    stepNumber,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w900,
-                      fontSize: 16,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    title,
-                    style: Theme.of(context)
-                        .textTheme
-                        .titleMedium
-                        ?.copyWith(fontWeight: FontWeight.w900),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              description,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: cs.onSurfaceVariant,
-                    height: 1.5,
-                  ),
-            ),
-            if (child != null) ...[
-              const SizedBox(height: 14),
-              child!,
-            ],
-          ],
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: cs.surface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: cs.surfaceContainerHighest.withValues(alpha: .8),
         ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 28,
+                height: 28,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF0088CC).withValues(alpha: .15),
+                  shape: BoxShape.circle,
+                ),
+                child: Text(
+                  step,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w900,
+                    color: Color(0xFF0088CC),
+                    fontSize: 14,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 14.5,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            description,
+            style: TextStyle(
+              fontSize: 12.5,
+              color: cs.onSurface.withValues(alpha: .75),
+              height: 1.4,
+            ),
+          ),
+          const SizedBox(height: 12),
+          action,
+        ],
       ),
     );
   }

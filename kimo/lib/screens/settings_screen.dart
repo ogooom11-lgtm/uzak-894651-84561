@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../config/app_environment.dart';
+import '../repositories/device_repository.dart';
+import '../repositories/telegram_device_repository.dart';
 import '../widgets/app_snack.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -17,9 +21,67 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _hapticFeedback = true;
   int _timeoutSeconds = 10;
   String _themePreference = 'system';
+  late final TextEditingController _botTokenController;
+  late final TextEditingController _chatIdController;
+  bool _isSavingTelegramConfig = false;
 
   static const String botUrl = 'https://t.me/tamkontrolkimidev_bot';
   static const String botUsername = 'tamkontrolkimidev_bot';
+
+  @override
+  void initState() {
+    super.initState();
+    _botTokenController =
+        TextEditingController(text: AppEnvironment.defaultTelegramBotToken);
+    _chatIdController =
+        TextEditingController(text: AppEnvironment.defaultTelegramChatId);
+    _loadSavedCloudConfig();
+  }
+
+  @override
+  void dispose() {
+    _botTokenController.dispose();
+    _chatIdController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadSavedCloudConfig() async {
+    final prefs = await SharedPreferences.getInstance();
+    final savedToken = prefs.getString('telegram_cloud_bot_token');
+    final savedChat = prefs.getString('telegram_cloud_chat_id');
+    if (savedToken != null && savedToken.trim().isNotEmpty) {
+      _botTokenController.text = savedToken.trim();
+    }
+    if (savedChat != null && savedChat.trim().isNotEmpty) {
+      _chatIdController.text = savedChat.trim();
+    }
+  }
+
+  Future<void> _saveTelegramCloudConfig() async {
+    final token = _botTokenController.text.trim();
+    final chat = _chatIdController.text.trim();
+    if (token.isEmpty) {
+      showAppSnack(context, 'يرجى إدخال Bot Token الخاص بقاعدة البيانات.', error: true);
+      return;
+    }
+    setState(() => _isSavingTelegramConfig = true);
+    try {
+      final repo = context.read<DeviceRepository>();
+      if (repo is TelegramDeviceRepository) {
+        await repo.updateConfig(token: token, chat: chat);
+      }
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('telegram_cloud_bot_token', token);
+      await prefs.setString('telegram_cloud_chat_id', chat);
+      if (mounted) {
+        showAppSnack(context, '✅ تم حفظ وضبط سحابة Telegram كقاعدة بيانات بنجاح!');
+      }
+    } catch (e) {
+      if (mounted) showAppSnack(context, 'فشل حفظ الإعدادات: $e', error: true);
+    } finally {
+      if (mounted) setState(() => _isSavingTelegramConfig = false);
+    }
+  }
 
   Future<void> _openBot() async {
     final uri = Uri.parse(botUrl);
@@ -90,7 +152,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ),
                       SizedBox(height: 3),
                       Text(
-                        'تخصيص التحكم المباشر وتكامل Telegram واختصارات الكمبيوتر',
+                        'تخصيص سحابة Telegram وقاعدة البيانات والتحكم المباشر',
                         style: TextStyle(color: Colors.white70, fontSize: 12.5),
                       ),
                     ],
@@ -155,10 +217,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           const SizedBox(height: 14),
 
-          // 2. Telegram Bot Integration
+          // 2. Telegram Bot Integration & Cloud Database
           _SettingsSection(
-            title: 'تكامل Telegram الذكي',
-            icon: Icons.send_rounded,
+            title: 'قاعدة بيانات Telegram السحابية (Cloud Database)',
+            icon: Icons.cloud_sync_rounded,
             color: const Color(0xFF0284C7),
             children: [
               ListTile(
@@ -172,7 +234,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                   child: const Icon(Icons.smart_toy_rounded, color: Color(0xFF0284C7)),
                 ),
-                title: const Text('بوت التحكم الرسمي'),
+                title: const Text('بوت السحابة والتحكم'),
                 subtitle: const Text('@$botUsername'),
                 trailing: Wrap(
                   spacing: 4,
@@ -190,7 +252,54 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ],
                 ),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _botTokenController,
+                decoration: InputDecoration(
+                  labelText: 'Telegram Bot Token (قاعدة البيانات)',
+                  hintText: '8151486801:AAF...',
+                  prefixIcon: const Icon(Icons.key_rounded, size: 20),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+                  filled: true,
+                  fillColor: cs.surfaceContainerHighest.withValues(alpha: .3),
+                ),
+                style: const TextStyle(fontSize: 13, fontFamily: 'monospace'),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: _chatIdController,
+                decoration: InputDecoration(
+                  labelText: 'Telegram Chat ID (معرف المحادثة)',
+                  hintText: '123456789',
+                  prefixIcon: const Icon(Icons.chat_bubble_outline_rounded, size: 20),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+                  filled: true,
+                  fillColor: cs.surfaceContainerHighest.withValues(alpha: .3),
+                ),
+                style: const TextStyle(fontSize: 13, fontFamily: 'monospace'),
+                keyboardType: TextInputType.number,
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: _isSavingTelegramConfig ? null : _saveTelegramCloudConfig,
+                  icon: _isSavingTelegramConfig
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                        )
+                      : const Icon(Icons.save_rounded, size: 18),
+                  label: const Text('حفظ وضبط سحابة Telegram كقاعدة بيانات'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFF0284C7),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
@@ -201,14 +310,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'كيف يعمل ربط Telegram؟',
+                      'كيف تعمل قاعدة بيانات Telegram؟',
                       style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
                     ),
                     SizedBox(height: 4),
                     Text(
-                      '1. افتح البوت في تيليجرام واضغط Start.\n'
-                      '2. يعطيك البوت معرّف Chat ID خاص بك.\n'
-                      '3. الصق الـ Chat ID في شاشة تفاصيل الجهاز لربطه بالكمبيوتر فوراً.',
+                      '• يعمل البوت كخادم سحابي مجاني وفوري لنقل الأوامر والملفات والحالة بين الهاتف والكمبيوتر.\n'
+                      '• لا حاجة لـ Firebase إطلاقاً؛ كل ما تحتاجه هو إنشاء بوت عبر BotFather أو استخدام البوت الافتراضي ولصق Chat ID الخاص بك.',
                       style: TextStyle(fontSize: 12.5, height: 1.5),
                     ),
                   ],
@@ -278,66 +386,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _SettingsSection(
             title: 'البيئة وحالة السحابة',
             icon: Icons.cloud_done_rounded,
-            color: const Color(0xFF16A34A),
+            color: const Color(0xFF10B981),
             children: [
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: const Icon(Icons.cloud_outlined),
-                title: const Text('حالة Firebase'),
-                subtitle: Text(AppEnvironment.useFirebase
-                    ? 'متصل بالسحابة (Firebase Production)'
-                    : 'وضع التجربة المحلي (Mock / Demo Mode)'),
-                trailing: StatusBadge(
-                  label: AppEnvironment.useFirebase ? 'Firebase' : 'Demo',
-                  color: AppEnvironment.useFirebase
-                      ? const Color(0xFF16A34A)
-                      : const Color(0xFFF59E0B),
-                ),
-              ),
+              _InfoRow(title: 'نوع السحابة', value: 'Telegram Cloud Database (مباشر)'),
               const Divider(),
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: const Icon(Icons.person_outline_rounded),
-                title: const Text('معرف المستخدم الحالي'),
-                subtitle: Text(AppEnvironment.demoUserId),
-                trailing: IconButton(
-                  tooltip: 'نسخ المعرف',
-                  onPressed: () => _copyText(
-                    AppEnvironment.demoUserId,
-                    'تم نسخ معرف المستخدم.',
-                  ),
-                  icon: const Icon(Icons.copy_rounded, size: 20),
-                ),
-              ),
+              _InfoRow(title: 'إصدار عميل الهاتف', value: '1.2.0'),
               const Divider(),
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: const Icon(Icons.verified_outlined),
-                title: const Text('إصدار التطبيق'),
-                subtitle: const Text('KIOM Mobile v1.5.0 • متوافق مع PC Agent v1.0.0+'),
-              ),
+              _InfoRow(title: 'إصدار عميل الكمبيوتر', value: '0.1.0'),
+              const Divider(),
+              _InfoRow(title: 'المستخدم المحلي', value: AppEnvironment.demoUserId),
             ],
-          ),
-          const SizedBox(height: 14),
-
-          // 5. Security Notice
-          Card(
-            color: cs.errorContainer.withValues(alpha: .20),
-            child: Padding(
-              padding: const EdgeInsets.all(14),
-              child: Row(
-                children: [
-                  Icon(Icons.shield_outlined, color: cs.error, size: 26),
-                  const SizedBox(width: 12),
-                  const Expanded(
-                    child: Text(
-                      'تنبيه أمان: استخدم تطبيق KIOM فقط لإدارة أجهزتك الخاصة أو الأجهزة التي لديك إذن واضح لإدارتها.',
-                      style: TextStyle(fontSize: 12.5, height: 1.4),
-                    ),
-                  ),
-                ],
-              ),
-            ),
           ),
         ],
       ),
@@ -360,39 +418,43 @@ class _SettingsSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  width: 36,
-                  height: 36,
-                  decoration: BoxDecoration(
-                    color: color.withValues(alpha: .12),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Icon(icon, color: color, size: 20),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    title,
-                    style: Theme.of(context)
-                        .textTheme
-                        .titleSmall
-                        ?.copyWith(fontWeight: FontWeight.w900),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            ...children,
-          ],
+    final cs = Theme.of(context).colorScheme;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: cs.surface,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: cs.surfaceContainerHighest.withValues(alpha: .8),
         ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: .14),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(icon, color: color, size: 20),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          ...children,
+        ],
       ),
     );
   }
@@ -411,38 +473,40 @@ class _HotkeyTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: .4),
-        borderRadius: BorderRadius.circular(14),
+        color: cs.surfaceContainerHighest.withValues(alpha: .4),
+        borderRadius: BorderRadius.circular(16),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                ),
+              ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.primary.withValues(alpha: .15),
+                  color: const Color(0xFF7C3AED).withValues(alpha: .15),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
                   keys,
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.primary,
-                    fontWeight: FontWeight.w900,
-                    fontSize: 12.5,
+                  style: const TextStyle(
+                    fontFamily: 'monospace',
+                    fontWeight: FontWeight.bold,
+                    fontSize: 11,
+                    color: Color(0xFF7C3AED),
                   ),
                   textDirection: TextDirection.ltr,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  title,
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5),
                 ),
               ),
             ],
@@ -450,7 +514,7 @@ class _HotkeyTile extends StatelessWidget {
           const SizedBox(height: 4),
           Text(
             description,
-            style: Theme.of(context).textTheme.bodySmall,
+            style: TextStyle(color: cs.onSurface.withValues(alpha: .7), fontSize: 12),
           ),
         ],
       ),
@@ -458,28 +522,26 @@ class _HotkeyTile extends StatelessWidget {
   }
 }
 
-class StatusBadge extends StatelessWidget {
-  const StatusBadge({super.key, required this.label, required this.color});
+class _InfoRow extends StatelessWidget {
+  const _InfoRow({required this.title, required this.value});
 
-  final String label;
-  final Color color;
+  final String title;
+  final String value;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: .15),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: color.withValues(alpha: .30)),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          color: color,
-          fontSize: 12,
-          fontWeight: FontWeight.bold,
-        ),
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(title, style: const TextStyle(fontSize: 13)),
+          Text(
+            value,
+            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+            textDirection: TextDirection.ltr,
+          ),
+        ],
       ),
     );
   }

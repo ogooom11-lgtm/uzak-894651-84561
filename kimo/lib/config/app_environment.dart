@@ -1,11 +1,15 @@
 class AppEnvironment {
-  /// Keep false while you design and test the app without Firebase.
-  /// After running `flutterfire configure`, set this to true.
-  static const bool useFirebase = true;
+  /// Telegram Cloud Database is now the primary cloud backend.
+  static const bool useFirebase = false;
 
-  /// Temporary local user id used when Firebase Auth is not connected yet.
-  /// Replace it later with FirebaseAuth.instance.currentUser!.uid.
+  /// Default Telegram bot token & chat id for Cloud Database (can be configured in app settings).
+  static const String defaultTelegramBotToken =
+      '8151486801:AAF-hVj-h5R1R7E7m1a8YwZ64X5o5K4w_9o';
+  static const String defaultTelegramChatId = '';
+
+  /// Temporary local user id used for local indexing.
   static const String demoUserId = 'local_demo_user';
 
   static const Duration connectionTimeout = Duration(seconds: 10);
 }
+
