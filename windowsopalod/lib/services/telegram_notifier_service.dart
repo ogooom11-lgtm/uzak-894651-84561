@@ -99,7 +99,6 @@ class TelegramNotifierService {
               'text': text,
               if (parseMode.isNotEmpty) 'parse_mode': parseMode,
               'disable_web_page_preview': true,
-              if (replyToMessageId != null) 'reply_to_message_id': replyToMessageId,
               if (replyMarkup != null) 'reply_markup': replyMarkup,
             }),
           )
