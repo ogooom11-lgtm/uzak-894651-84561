@@ -103,27 +103,39 @@ class AgentConfig {
     final appData = Platform.environment['APPDATA'];
     final programData = Platform.environment['ProgramData'];
 
+    // Primary location: %APPDATA%\KiomPcAgent\agent_config.json
+    final appDataConfigFile = appData != null
+        ? File('$appData\\KiomPcAgent\\agent_config.json')
+        : null;
+
+    if (appDataConfigFile != null && await appDataConfigFile.exists()) {
+      return appDataConfigFile;
+    }
+
     final candidates = <File>[
-      File('$exeDir\\config\\agent_config.json'),
+      if (appDataConfigFile != null) appDataConfigFile,
       File('$currentDir\\config\\agent_config.json'),
-      File('$exeDir\\config\\firebase_config.json'),
-      File('$currentDir\\config\\firebase_config.json'),
-      if (appData != null) File('$appData\\KiomPcAgent\\agent_config.json'),
+      File('$exeDir\\config\\agent_config.json'),
       if (appData != null) File('$appData\\KiomPcAgent\\firebase_config.json'),
+      File('$currentDir\\config\\firebase_config.json'),
+      File('$exeDir\\config\\firebase_config.json'),
       if (appData != null)
         File('$appData\\KiomPcAgent\\config\\agent_config.json'),
-      if (appData != null)
-        File('$appData\\KiomPcAgent\\config\\firebase_config.json'),
       if (programData != null)
         File('$programData\\KiomPcAgent\\agent_config.json'),
-      if (programData != null)
-        File('$programData\\KiomPcAgent\\firebase_config.json'),
-      if (programData != null)
-        File('$programData\\KiomPcAgent\\config\\agent_config.json'),
     ];
 
     for (final file in candidates) {
-      if (await file.exists()) return file;
+      if (await file.exists()) {
+        // Also mirror it to %APPDATA%\KiomPcAgent\agent_config.json for easy access
+        if (appDataConfigFile != null && !await appDataConfigFile.exists()) {
+          try {
+            await appDataConfigFile.parent.create(recursive: true);
+            await file.copy(appDataConfigFile.path);
+          } catch (_) {}
+        }
+        return file;
+      }
     }
 
     // Auto-create default agent_config.json if none exists
