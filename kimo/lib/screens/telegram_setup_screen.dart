@@ -165,10 +165,7 @@ class _TelegramSetupScreenState extends State<TelegramSetupScreen> {
       final commandId = await repo.sendCommand(
         userId: widget.userId,
         deviceId: widget.deviceId,
-        type: CommandType.telegramNotification,
-        payload: {
-          'message': '🔔 تجربة: اتصال Telegram مع الكمبيوتر يعمل بنجاح!',
-        },
+        type: CommandType.checkConnection,
       );
       final response = await repo.waitForCommandResponse(
         deviceId: widget.deviceId,
@@ -177,9 +174,9 @@ class _TelegramSetupScreenState extends State<TelegramSetupScreen> {
       );
       if (!mounted) return;
       if (response != null && response.success) {
-        showAppSnack(context, '✅ تم إرسال التنبيه إلى Telegram بنجاح!');
+        showAppSnack(context, '✅ تم فحص والتحقق من الاتصال بنجاح!');
       } else {
-        showAppSnack(context, 'تم إرسال طلب التنبيه للكمبيوتر.');
+        showAppSnack(context, 'تم إرسال اختبار الاتصال للبوت.');
       }
     } catch (e) {
       if (mounted) showAppSnack(context, 'فشل إرسال التنبيه: $e', error: true);
@@ -195,10 +192,7 @@ class _TelegramSetupScreenState extends State<TelegramSetupScreen> {
       final commandId = await repo.sendCommand(
         userId: widget.userId,
         deviceId: widget.deviceId,
-        type: CommandType.telegramNotification,
-        payload: {
-          'action': 'screenshot',
-        },
+        type: CommandType.requestScreenshot,
       );
       final response = await repo.waitForCommandResponse(
         deviceId: widget.deviceId,

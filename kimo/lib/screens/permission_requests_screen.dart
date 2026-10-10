@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../core/app_formatters.dart';
+import '../core/command_type.dart';
 import '../models/pc_device.dart';
 import '../models/permission_request.dart';
 import '../repositories/device_repository.dart';

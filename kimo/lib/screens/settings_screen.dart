@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -5,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../config/app_environment.dart';
+import '../core/command_type.dart';
 import '../repositories/device_repository.dart';
 import '../repositories/telegram_device_repository.dart';
 import '../widgets/app_snack.dart';
