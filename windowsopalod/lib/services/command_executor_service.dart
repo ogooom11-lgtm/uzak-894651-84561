@@ -1763,21 +1763,14 @@ class CommandExecutorService {
     if (telegram.hasBotToken) {
       sentGreeting = await telegram.sendMessage(
         'KIOM: تم ربط محادثة Telegram هذه مع الكمبيوتر بنجاح!\n'
-        '💻 الجهاز: $deviceName ($deviceId)\n'
+        '💻 الجهاز: $deviceId\n'
         '📡 يمكنك الآن إرسال الأوامر (مثل /start أو /screenshot أو /lock) وستصلك صور الشاشة والتنبيهات هنا مباشرة.',
         chatId: chatId,
       );
 
       // Send an instant verification screenshot to the user's Telegram chat
       try {
-        final screenBytes = await _captureScreenJpeg();
-        if (screenBytes != null && screenBytes.isNotEmpty) {
-          await telegram.sendPhoto(
-            screenBytes,
-            caption: '📸 لقطة شاشة تأكيدية من الكمبيوتر: تم اعتماد Chat ID بنجاح!',
-            chatId: chatId,
-          );
-        }
+        await screenshotService.captureAndSend(deviceName: deviceId);
       } catch (_) {}
     }
 
