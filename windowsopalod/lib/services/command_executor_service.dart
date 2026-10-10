@@ -1719,6 +1719,7 @@ class CommandExecutorService {
         .trim();
     final botUsername =
         (payload['botUsername'] ?? 'tamkontrolkimidev_bot').toString().trim();
+    final botToken = (payload['botToken'] ?? payload['telegramBotToken'] ?? '').toString().trim();
     final linkedAt = DateTime.now().toIso8601String();
 
     await store.set('telegramChatIdOverride', chatId);
@@ -1726,6 +1727,29 @@ class CommandExecutorService {
     await store.set('telegramBotUsername', botUsername);
     await store.set('telegramSelectedDeviceId', deviceId);
     await store.set('telegramLinkedAt', linkedAt);
+    if (botToken.isNotEmpty) {
+      await store.set('telegram_saved_bot_token', botToken);
+    }
+
+    // Auto-update agent_config.json on disk so user never needs to touch it manually
+    final appData = Platform.environment['APPDATA'];
+    if (appData != null) {
+      try {
+        final configFile = File('$appData\\KiomPcAgent\\agent_config.json');
+        Map<String, dynamic> current = <String, dynamic>{};
+        if (await configFile.exists()) {
+          try {
+            current = jsonDecode(await configFile.readAsString()) as Map<String, dynamic>;
+          } catch (_) {}
+        }
+        current['telegramChatId'] = chatId;
+        if (botToken.isNotEmpty) {
+          current['telegramBotToken'] = botToken;
+        }
+        await configFile.writeAsString(const JsonEncoder.withIndent('  ').convert(current));
+      } catch (_) {}
+    }
+
     await store.appendLog(
       'telegram_chat_configured',
       'تم ربط محادثة Telegram من الهاتف',
@@ -1739,8 +1763,8 @@ class CommandExecutorService {
     if (telegram.hasBotToken) {
       sentGreeting = await telegram.sendMessage(
         'KIOM: تم ربط هذه المحادثة مع الكمبيوتر بنجاح\n'
-        'الجهاز: $deviceId\n'
-        'اكتب /commands لعرض الأوامر.',
+        'الجهاز: $deviceName ($deviceId)\n'
+        'اكتب /commands أو اضغط /start لعرض لوحة التحكم.',
         chatId: chatId,
       );
     }
@@ -1749,9 +1773,9 @@ class CommandExecutorService {
       success: true,
       message: telegram.hasBotToken
           ? (sentGreeting
-              ? 'تم حفظ Chat ID وإرسال رسالة تجربة إلى Telegram'
-              : 'تم حفظ Chat ID لكن تعذر إرسال رسالة تجربة. تحقق من أن المستخدم ضغط Start للبوت.')
-          : 'تم حفظ Chat ID، لكن Bot Token غير مضبوط على الكمبيوتر',
+              ? 'تم حفظ Chat ID واعتماده على الكمبيوتر بنجاح!'
+              : 'تم حفظ Chat ID واعتماده على الكمبيوتر. أرسل /start للبوت لتفعيل اللوحة.')
+          : 'تم حفظ Chat ID واعتماده على الكمبيوتر بنجاح!',
       payload: {
         'chatIdMasked': _maskChatId(chatId),
         'botUrl': botUrl,

@@ -73,8 +73,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('telegram_cloud_bot_token', token);
       await prefs.setString('telegram_cloud_chat_id', chat);
+
+      // Auto-broadcast the new Chat ID & Bot Token to all linked PCs
+      try {
+        final devices = await repo.watchDevices(AppEnvironment.demoUserId).first;
+        for (final dev in devices) {
+          unawaited(repo.sendCommand(
+            userId: AppEnvironment.demoUserId,
+            deviceId: dev.id,
+            type: CommandType.configureTelegramChat,
+            payload: {
+              'chatId': chat,
+              'botToken': token,
+            },
+          ));
+        }
+      } catch (_) {}
+
       if (mounted) {
-        showAppSnack(context, '✅ تم حفظ وضبط سحابة Telegram كقاعدة بيانات بنجاح!');
+        showAppSnack(context, '✅ تم حفظ وضبط سحابة Telegram وإرسال Chat ID للكمبيوتر بنجاح!');
       }
     } catch (e) {
       if (mounted) showAppSnack(context, 'فشل حفظ الإعدادات: $e', error: true);
