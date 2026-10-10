@@ -141,31 +141,38 @@ class AgentConfig {
     final appData = Platform.environment['APPDATA'];
     final programData = Platform.environment['ProgramData'];
 
-    // Primary location: %APPDATA%\KiomPcAgent\agent_config.json
     final appDataConfigFile = appData != null
         ? File('$appData\\KiomPcAgent\\agent_config.json')
         : null;
+
+    final workspaceConfigs = <File>[
+      File('$currentDir\\config\\agent_config.json'),
+      File('$exeDir\\config\\agent_config.json'),
+    ];
+
+    for (final wsFile in workspaceConfigs) {
+      if (await wsFile.exists()) {
+        if (appDataConfigFile != null) {
+          try {
+            await appDataConfigFile.parent.create(recursive: true);
+            await wsFile.copy(appDataConfigFile.path);
+          } catch (_) {}
+        }
+        return wsFile;
+      }
+    }
 
     if (appDataConfigFile != null && await appDataConfigFile.exists()) {
       return appDataConfigFile;
     }
 
     final candidates = <File>[
-      if (appDataConfigFile != null) appDataConfigFile,
-      File('$currentDir\\config\\agent_config.json'),
-      File('$exeDir\\config\\agent_config.json'),
-      if (appData != null) File('$appData\\KiomPcAgent\\firebase_config.json'),
-      File('$currentDir\\config\\firebase_config.json'),
-      File('$exeDir\\config\\firebase_config.json'),
-      if (appData != null)
-        File('$appData\\KiomPcAgent\\config\\agent_config.json'),
       if (programData != null)
         File('$programData\\KiomPcAgent\\agent_config.json'),
     ];
 
     for (final file in candidates) {
       if (await file.exists()) {
-        // Also mirror it to %APPDATA%\KiomPcAgent\agent_config.json for easy access
         if (appDataConfigFile != null && !await appDataConfigFile.exists()) {
           try {
             await appDataConfigFile.parent.create(recursive: true);
@@ -185,10 +192,10 @@ class AgentConfig {
     }
     final defaultFile = File('${targetDir.path}\\agent_config.json');
     final defaultJson = const JsonEncoder.withIndent('  ').convert({
-      'telegramBotToken': '8151486801:AAF-hVj-h5R1R7E7m1a8YwZ64X5o5K4w_9o',
-      'telegramChatId': '',
-      'telegramCloudDbBotToken': '',
-      'telegramCloudDbChatId': '',
+      'telegramBotToken': '8465366644:AAEMXtYGEl5Qo5BwNwiUdqmWml_vO-meliM',
+      'telegramChatId': '8597783492',
+      'telegramCloudDbBotToken': '8919370396:AAHQrNYtJzy7yVPGIWQSsQjbcaAJ1Q8cWGw',
+      'telegramCloudDbChatId': '-1004449817252',
       'pollCommandsEverySeconds': 3,
       'syncOpenAppsEverySeconds': 10,
       'scanExplorerEverySeconds': 5,

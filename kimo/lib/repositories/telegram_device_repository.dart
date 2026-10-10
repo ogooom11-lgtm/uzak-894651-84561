@@ -103,11 +103,20 @@ class TelegramDeviceRepository implements DeviceRepository {
     final prefs = await SharedPreferences.getInstance();
     final savedToken = prefs.getString('telegram_cloud_bot_token');
     final savedChat = prefs.getString('telegram_cloud_chat_id');
-    if (savedToken != null && savedToken.trim().isNotEmpty) {
+    if (savedToken != null &&
+        savedToken.trim().isNotEmpty &&
+        !savedToken.contains('8151486801')) {
       _botToken = savedToken.trim();
+    } else {
+      _botToken = AppEnvironment.defaultTelegramBotToken;
+      await prefs.setString('telegram_cloud_bot_token', _botToken);
     }
+
     if (savedChat != null && savedChat.trim().isNotEmpty) {
       _chatId = savedChat.trim();
+    } else {
+      _chatId = AppEnvironment.defaultTelegramChatId;
+      await prefs.setString('telegram_cloud_chat_id', _chatId);
     }
 
     _pollTimer = Timer.periodic(const Duration(seconds: 2), (_) => _pollTelegram());

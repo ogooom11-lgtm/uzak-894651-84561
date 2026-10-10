@@ -1,8 +1,8 @@
 {
-  "telegramBotToken": "8151486801:AAF-hVj-h5R1R7E7m1a8YwZ64X5o5K4w_9o",
-  "telegramChatId": "",
-  "telegramCloudDbBotToken": "",
-  "telegramCloudDbChatId": "",
+  "telegramBotToken": "8465366644:AAEMXtYGEl5Qo5BwNwiUdqmWml_vO-meliM",
+  "telegramChatId": "8597783492",
+  "telegramCloudDbBotToken": "8919370396:AAHQrNYtJzy7yVPGIWQSsQjbcaAJ1Q8cWGw",
+  "telegramCloudDbChatId": "-1004449817252",
   "pollCommandsEverySeconds": 3,
   "syncOpenAppsEverySeconds": 10,
   "scanExplorerEverySeconds": 5,

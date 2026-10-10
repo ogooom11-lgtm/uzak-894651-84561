@@ -46,7 +46,10 @@ class _TelegramSetupScreenState extends State<TelegramSetupScreen> {
     if (widget.device?.telegramChatId != null &&
         widget.device!.telegramChatId!.isNotEmpty) {
       _chatIdController.text = widget.device!.telegramChatId!;
+    } else {
+      _chatIdController.text = AppEnvironment.defaultUserChatId;
     }
+    _botTokenController.text = AppEnvironment.defaultUserBotToken;
   }
 
   @override
