@@ -511,14 +511,15 @@ class TelegramDeviceRepository implements DeviceRepository {
     } catch (_) {}
   }
 
-  Future<bool> _sendTelegramMessage(String text) async {
-    if (_botToken.isEmpty || _chatId.isEmpty) return false;
+  Future<bool> _sendTelegramMessage(String text, {String? targetChatId}) async {
+    final effectiveChat = (targetChatId ?? _chatId).trim();
+    if (_botToken.isEmpty || effectiveChat.isEmpty) return false;
     try {
       final uri = Uri.parse('https://api.telegram.org/bot$_botToken/sendMessage');
       final req = await _httpClient.postUrl(uri);
       req.headers.contentType = ContentType.json;
       final body = jsonEncode({
-        'chat_id': _chatId,
+        'chat_id': effectiveChat,
         'text': text,
         'disable_web_page_preview': true,
       });
@@ -705,7 +706,17 @@ class TelegramDeviceRepository implements DeviceRepository {
 
     // 2. Telegram Cloud Message
     final message = '#KIOM_CMD\n${jsonEncode(envelope)}';
-    unawaited(_sendTelegramMessage(message));
+    var targetChat = _chatId;
+    if (targetChat.isEmpty) {
+      try {
+        final devices = await _store.loadDevices(userId);
+        final dev = devices.where((d) => d.id == deviceId).firstOrNull;
+        if (dev?.telegramChatId != null && dev!.telegramChatId!.isNotEmpty) {
+          targetChat = dev.telegramChatId!;
+        }
+      } catch (_) {}
+    }
+    unawaited(_sendTelegramMessage(message, targetChatId: targetChat.isNotEmpty ? targetChat : null));
 
     // Initial sent ack
     final ack = CommandResponse(

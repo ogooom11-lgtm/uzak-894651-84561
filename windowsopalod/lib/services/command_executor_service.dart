@@ -874,39 +874,21 @@ class CommandExecutorService {
             final path = (command.payload['path'] ?? '').toString();
             if (path.isEmpty) throw StateError('path مطلوب لإرسال الملف إلى Telegram');
             _ensurePathOperationAllowed(path, 'read');
-            final file = File(path);
-            if (!await file.exists()) {
-              throw StateError('الملف غير موجود في المسار: $path');
-            }
             if (!telegram.isConfigured) {
               throw StateError('Telegram غير مربوط أو Bot Token غير مضبوط على الكمبيوتر');
             }
-            final fileName = file.uri.pathSegments.isNotEmpty
-                ? file.uri.pathSegments.last
-                : 'file';
-            final lower = fileName.toLowerCase();
-            final isPhoto = lower.endsWith('.jpg') ||
-                lower.endsWith('.jpeg') ||
-                lower.endsWith('.png') ||
-                lower.endsWith('.webp') ||
-                lower.endsWith('.gif');
-
-            bool sent = false;
-            final caption = '📄 $fileName\n📍 $path\n🖥️ $deviceId';
-            if (isPhoto) {
-              sent = await telegram.sendPhoto(filePath: path, caption: caption);
-            }
+            final targetChat = (command.payload['chatId'] ?? command.payload['telegramChatId'] ?? '').toString().trim();
+            final sent = await _sendFileOrFolderToTelegram(path, targetChatId: targetChat.isNotEmpty ? targetChat : null);
             if (!sent) {
-              sent = await telegram.sendDocument(filePath: path, caption: caption);
+              throw StateError('فشل إرسال الملف/المجلد إلى Telegram. تحقق من صلاحيات الوصول واتصال الإنترنت.');
             }
-            if (!sent) {
-              throw StateError('فشل إرسال الملف إلى Telegram. تأكد من حجم الملف (أقل من 50MB) واتصال الإنترنت.');
-            }
+            final name = File(path).uri.pathSegments.isNotEmpty
+                ? File(path).uri.pathSegments.last
+                : path;
             success = true;
-            message = 'تم إرسال الملف $fileName بنجاح إلى محادثة Telegram.';
+            message = 'تم إرسال $name بنجاح إلى محادثة Telegram.';
             responsePayload = {
               'path': path,
-              'fileName': fileName,
               'sentToTelegram': true,
               'sentAt': DateTime.now().toIso8601String(),
             };
@@ -1797,6 +1779,178 @@ class CommandExecutorService {
     if (clean.length <= 4) return '****';
     final stars = List.filled(clean.length - 4, '*').join();
     return '$stars${clean.substring(clean.length - 4)}';
+  }
+
+  Future<File?> _compressDirectory(Directory dir) async {
+    final tempDir = Directory('${store.dir.path}\\temp_zips');
+    if (!await tempDir.exists()) await tempDir.create(recursive: true);
+    final folderName = dir.uri.pathSegments.where((s) => s.isNotEmpty).isEmpty
+        ? 'archive'
+        : dir.uri.pathSegments.where((s) => s.isNotEmpty).last;
+    final zipFile = File('${tempDir.path}\\${folderName}_${DateTime.now().millisecondsSinceEpoch}.zip');
+
+    try {
+      await Process.run('powershell', [
+        '-NoProfile',
+        '-Command',
+        'Compress-Archive -Path "${dir.path}\\*" -DestinationPath "${zipFile.path}" -Force',
+      ]);
+      if (await zipFile.exists() && await zipFile.length() > 0) {
+        return zipFile;
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  Future<List<File>> _splitFile(File file, {int maxChunkBytes = 45 * 1024 * 1024}) async {
+    final fileSize = await file.length();
+    if (fileSize <= maxChunkBytes) return [file];
+
+    final parts = <File>[];
+    final input = file.openRead();
+    var partIndex = 1;
+    var currentPartBytes = 0;
+    IOSink? currentSink;
+    File? currentPartFile;
+
+    final tempDir = Directory('${store.dir.path}\\temp_splits');
+    if (!await tempDir.exists()) await tempDir.create(recursive: true);
+    final baseName = file.uri.pathSegments.last;
+
+    await for (final chunk in input) {
+      if (currentSink == null || currentPartBytes + chunk.length > maxChunkBytes) {
+        if (currentSink != null) {
+          await currentSink.flush();
+          await currentSink.close();
+        }
+        final partName = '$baseName.part${partIndex.toString().padLeft(3, '0')}';
+        currentPartFile = File('${tempDir.path}\\$partName');
+        currentSink = currentPartFile.openWrite();
+        parts.add(currentPartFile);
+        partIndex++;
+        currentPartBytes = 0;
+      }
+      currentSink.add(chunk);
+      currentPartBytes += chunk.length;
+    }
+    if (currentSink != null) {
+      await currentSink.flush();
+      await currentSink.close();
+    }
+    return parts;
+  }
+
+  Future<bool> _sendSingleFileWithChunking(
+    String filePath, {
+    String? targetChatId,
+    String? customCaption,
+  }) async {
+    final file = File(filePath);
+    if (!await file.exists()) return false;
+    final length = await file.length();
+    final fileName = file.uri.pathSegments.last;
+    final lower = fileName.toLowerCase();
+    final isPhoto = (lower.endsWith('.jpg') ||
+            lower.endsWith('.jpeg') ||
+            lower.endsWith('.png') ||
+            lower.endsWith('.webp')) &&
+        length < 10 * 1024 * 1024;
+
+    final defaultCaption = customCaption ?? '📄 $fileName\n📍 $filePath\n🖥️ $deviceId';
+
+    if (length <= 45 * 1024 * 1024) {
+      if (isPhoto) {
+        final sent = await telegram.sendPhoto(
+          filePath: filePath,
+          caption: defaultCaption,
+          chatId: targetChatId,
+        );
+        if (sent) return true;
+      }
+      return await telegram.sendDocument(
+        filePath: filePath,
+        caption: defaultCaption,
+        chatId: targetChatId,
+      );
+    }
+
+    // Large file (> 45MB): Notify and split
+    await telegram.sendMessage(
+      '📦 الملف كبير (${(length / (1024 * 1024)).toStringAsFixed(1)} MB)، جاري تقسيمه وضغطه وإرساله كأجزاء متعددة:\n📄 $fileName',
+      chatId: targetChatId,
+    );
+
+    final parts = await _splitFile(file, maxChunkBytes: 45 * 1024 * 1024);
+    var allSent = true;
+    for (var i = 0; i < parts.length; i++) {
+      final part = parts[i];
+      final partCaption =
+          '📦 جزء (${i + 1}/${parts.length}): $fileName\nالحجم: ${(await part.length() / (1024 * 1024)).toStringAsFixed(1)} MB';
+      final sent = await telegram.sendDocument(
+        filePath: part.path,
+        caption: partCaption,
+        chatId: targetChatId,
+      );
+      if (!sent) allSent = false;
+      try {
+        await part.delete();
+      } catch (_) {}
+    }
+    return allSent;
+  }
+
+  Future<bool> _sendFileOrFolderToTelegram(
+    String path, {
+    String? targetChatId,
+  }) async {
+    final type = FileSystemEntity.typeSync(path);
+    if (type == FileSystemEntityType.notFound) {
+      throw StateError('المسار غير موجود: $path');
+    }
+
+    if (type == FileSystemEntityType.directory) {
+      final dir = Directory(path);
+      final folderName = dir.uri.pathSegments.where((s) => s.isNotEmpty).isEmpty
+          ? 'folder'
+          : dir.uri.pathSegments.where((s) => s.isNotEmpty).last;
+
+      await telegram.sendMessage(
+        '📁 جاري ضغط المجلد $folderName وإرساله إلى Telegram...',
+        chatId: targetChatId,
+      );
+
+      final zipFile = await _compressDirectory(dir);
+      if (zipFile == null) {
+        final entities = await dir.list(recursive: false).toList();
+        final files = entities.whereType<File>().toList();
+        if (files.isEmpty) {
+          throw StateError('المجلد فارغ أو لا يحتوي على ملفات قابلة للقراءة: $path');
+        }
+        var anySent = false;
+        for (final f in files) {
+          final sent = await _sendSingleFileWithChunking(
+            f.path,
+            targetChatId: targetChatId,
+          );
+          if (sent) anySent = true;
+        }
+        return anySent;
+      }
+
+      try {
+        return await _sendSingleFileWithChunking(
+          zipFile.path,
+          targetChatId: targetChatId,
+          customCaption: '📁 مجلد مضغوط: $folderName\n📍 $path\n🖥️ $deviceId',
+        );
+      } finally {
+        try {
+          await zipFile.delete();
+        } catch (_) {}
+      }
+    } else {
+      return await _sendSingleFileWithChunking(path, targetChatId: targetChatId);
+    }
   }
 
   Future<void> _rememberUndo(
