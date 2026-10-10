@@ -1762,19 +1762,31 @@ class CommandExecutorService {
     var sentGreeting = false;
     if (telegram.hasBotToken) {
       sentGreeting = await telegram.sendMessage(
-        'KIOM: تم ربط هذه المحادثة مع الكمبيوتر بنجاح\n'
-        'الجهاز: $deviceName ($deviceId)\n'
-        'اكتب /commands أو اضغط /start لعرض لوحة التحكم.',
+        'KIOM: تم ربط محادثة Telegram هذه مع الكمبيوتر بنجاح!\n'
+        '💻 الجهاز: $deviceName ($deviceId)\n'
+        '📡 يمكنك الآن إرسال الأوامر (مثل /start أو /screenshot أو /lock) وستصلك صور الشاشة والتنبيهات هنا مباشرة.',
         chatId: chatId,
       );
+
+      // Send an instant verification screenshot to the user's Telegram chat
+      try {
+        final screenBytes = await _captureScreenJpeg();
+        if (screenBytes != null && screenBytes.isNotEmpty) {
+          await telegram.sendPhoto(
+            screenBytes,
+            caption: '📸 لقطة شاشة تأكيدية من الكمبيوتر: تم اعتماد Chat ID بنجاح!',
+            chatId: chatId,
+          );
+        }
+      } catch (_) {}
     }
 
     return _CommandProcessResult(
       success: true,
       message: telegram.hasBotToken
           ? (sentGreeting
-              ? 'تم حفظ Chat ID واعتماده على الكمبيوتر بنجاح!'
-              : 'تم حفظ Chat ID واعتماده على الكمبيوتر. أرسل /start للبوت لتفعيل اللوحة.')
+              ? 'تم اعتماد Chat ID على الكمبيوتر وإرسال رسالة ولقطة شاشة إلى Telegram بنجاح!'
+              : 'تم اعتماد Chat ID على الكمبيوتر. تأكد من ضغط Start للبوت في Telegram.')
           : 'تم حفظ Chat ID واعتماده على الكمبيوتر بنجاح!',
       payload: {
         'chatIdMasked': _maskChatId(chatId),

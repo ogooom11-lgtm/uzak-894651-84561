@@ -35,8 +35,10 @@ class TelegramSetupScreen extends StatefulWidget {
 
 class _TelegramSetupScreenState extends State<TelegramSetupScreen> {
   final _chatIdController = TextEditingController();
+  final _botTokenController = TextEditingController();
   bool _sending = false;
   bool _testing = false;
+  bool _testingScreenshot = false;
 
   @override
   void initState() {
@@ -50,6 +52,7 @@ class _TelegramSetupScreenState extends State<TelegramSetupScreen> {
   @override
   void dispose() {
     _chatIdController.dispose();
+    _botTokenController.dispose();
     super.dispose();
   }
 
@@ -90,6 +93,7 @@ class _TelegramSetupScreenState extends State<TelegramSetupScreen> {
 
   Future<void> _saveChatId() async {
     final chatId = _chatIdController.text.trim();
+    final customToken = _botTokenController.text.trim();
     if (chatId.isEmpty) {
       showAppSnack(context, 'اكتب Chat ID أو اضغط لصق من الحافظة أولاً.', error: true);
       return;
@@ -109,31 +113,38 @@ class _TelegramSetupScreenState extends State<TelegramSetupScreen> {
       if (repo is TelegramDeviceRepository) {
         await repo.updateConfig(chat: chatId);
       }
+      final payload = <String, dynamic>{
+        'chatId': chatId,
+        'botUrl': TelegramSetupScreen.botUrl,
+        'botUsername': TelegramSetupScreen.botUsername,
+      };
+      if (customToken.isNotEmpty) {
+        payload['botToken'] = customToken;
+      }
+
       final commandId = await repo.sendCommand(
         userId: widget.userId,
         deviceId: widget.deviceId,
         type: CommandType.configureTelegramChat,
-        payload: {
-          'chatId': chatId,
-          'botUrl': TelegramSetupScreen.botUrl,
-          'botUsername': TelegramSetupScreen.botUsername,
-        },
+        payload: payload,
       );
       final response = await repo.waitForCommandResponse(
         deviceId: widget.deviceId,
         commandId: commandId,
-        timeout: const Duration(seconds: 12),
+        timeout: const Duration(seconds: 15),
       );
       if (!mounted) return;
       if (response == null) {
         showAppSnack(
           context,
-          'تم إرسال Chat ID للكمبيوتر. سيبدأ البوت بالعمل فوراً كقاعدة بيانات.',
+          'تم إرسال Chat ID للكمبيوتر لاعتماده فوراً.',
         );
       } else if (response.success) {
         showAppSnack(
           context,
-          response.message.isEmpty ? 'تم ربط Telegram بنجاح!' : response.message,
+          response.message.isEmpty
+              ? '✅ تم اعتماد Chat ID على الكمبيوتر بنجاح!'
+              : response.message,
         );
       } else {
         showAppSnack(context, response.message, error: true);
@@ -154,7 +165,10 @@ class _TelegramSetupScreenState extends State<TelegramSetupScreen> {
       final commandId = await repo.sendCommand(
         userId: widget.userId,
         deviceId: widget.deviceId,
-        type: CommandType.checkConnection,
+        type: CommandType.telegramNotification,
+        payload: {
+          'message': '🔔 تجربة: اتصال Telegram مع الكمبيوتر يعمل بنجاح!',
+        },
       );
       final response = await repo.waitForCommandResponse(
         deviceId: widget.deviceId,
@@ -163,14 +177,44 @@ class _TelegramSetupScreenState extends State<TelegramSetupScreen> {
       );
       if (!mounted) return;
       if (response != null && response.success) {
-        showAppSnack(context, 'تم التحقق من الاتصال بنجاح!');
+        showAppSnack(context, '✅ تم إرسال التنبيه إلى Telegram بنجاح!');
       } else {
-        showAppSnack(context, 'تم إرسال اختبار الاتصال للبوت.');
+        showAppSnack(context, 'تم إرسال طلب التنبيه للكمبيوتر.');
       }
     } catch (e) {
-      if (mounted) showAppSnack(context, 'فشل إرسال اختبار الاتصال: $e', error: true);
+      if (mounted) showAppSnack(context, 'فشل إرسال التنبيه: $e', error: true);
     } finally {
       if (mounted) setState(() => _testing = false);
+    }
+  }
+
+  Future<void> _sendTestScreenshot() async {
+    setState(() => _testingScreenshot = true);
+    try {
+      final repo = context.read<DeviceRepository>();
+      final commandId = await repo.sendCommand(
+        userId: widget.userId,
+        deviceId: widget.deviceId,
+        type: CommandType.telegramNotification,
+        payload: {
+          'action': 'screenshot',
+        },
+      );
+      final response = await repo.waitForCommandResponse(
+        deviceId: widget.deviceId,
+        commandId: commandId,
+        timeout: const Duration(seconds: 15),
+      );
+      if (!mounted) return;
+      if (response != null && response.success) {
+        showAppSnack(context, '📸 تم التقاط وإرسال لقطة الشاشة إلى Telegram بنجاح!');
+      } else {
+        showAppSnack(context, 'تم إرسال طلب لقطة الشاشة إلى الكمبيوتر.');
+      }
+    } catch (e) {
+      if (mounted) showAppSnack(context, 'فشل طلب لقطة الشاشة: $e', error: true);
+    } finally {
+      if (mounted) setState(() => _testingScreenshot = false);
     }
   }
 
@@ -181,7 +225,7 @@ class _TelegramSetupScreenState extends State<TelegramSetupScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('ربط بوت Telegram'),
+        title: const Text('ربط بوت الأوامر وصور الشاشة'),
       ),
       body: ListView(
         padding: const EdgeInsets.all(20),
@@ -225,7 +269,7 @@ class _TelegramSetupScreenState extends State<TelegramSetupScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text(
-                        'قاعدة بيانات وسحابة Telegram',
+                        'بوت الأوامر وصور الشاشة',
                         style: TextStyle(
                           color: Colors.white,
                           fontSize: 17,
@@ -235,8 +279,8 @@ class _TelegramSetupScreenState extends State<TelegramSetupScreen> {
                       const SizedBox(height: 3),
                       Text(
                         isLinked
-                            ? '✅ الجهاز متصل بسحابة Telegram كقاعدة بيانات'
-                            : 'اربط البوت للتحكم واستقبال الأوامر والملفات السحابية',
+                            ? '✅ Chat ID مسجل ومربوط مع هذا الكمبيوتر'
+                            : 'أدخل معرّفك لإرساله للكمبيوتر واستلام الصور والأوامر فوراً',
                         style: const TextStyle(
                           color: Colors.white70,
                           fontSize: 12.5,
@@ -253,8 +297,8 @@ class _TelegramSetupScreenState extends State<TelegramSetupScreen> {
           // Steps
           _buildStepCard(
             step: '1',
-            title: 'افتح بوت Telegram الرسمي',
-            description: 'اضغط على الزر أدناه لفتح البوت والضغط على Start (بدء).',
+            title: 'افتح بوت Telegram',
+            description: 'اضغط على الزر لفتح محادثة البوت والضغط على Start (بدء).',
             action: ElevatedButton.icon(
               onPressed: _openBot,
               icon: const Icon(Icons.open_in_new_rounded, size: 18),
@@ -274,7 +318,7 @@ class _TelegramSetupScreenState extends State<TelegramSetupScreen> {
             step: '2',
             title: 'انسخ معرّف المحادثة (Chat ID)',
             description:
-                'بعد الضغط على Start، سيرسل لك البوت رسالة ترحيبية تحتوي على Chat ID الخاص بك. انسخه.',
+                'بعد الضغط على Start، سيرسل لك البوت رسالة ترحيبية تحتوي على رقم Chat ID الخاص بك. انسخه.',
             action: OutlinedButton.icon(
               onPressed: _copyLink,
               icon: const Icon(Icons.copy_rounded, size: 16),
@@ -290,15 +334,15 @@ class _TelegramSetupScreenState extends State<TelegramSetupScreen> {
 
           _buildStepCard(
             step: '3',
-            title: 'الصق Chat ID واضغط تفعيل',
-            description: 'الصق المعرف في الحقل أدناه ليتم ربطه بالكمبيوتر وسحابة التطبيق فوراً.',
+            title: 'الصق Chat ID واضغط إرسال واعتماد',
+            description: 'سيتم إرسال Chat ID من هاتفك للكمبيوتر لاعتماده فوراً دون تعديل أي ملفات على الكمبيوتر.',
             action: Column(
               children: [
                 TextField(
                   controller: _chatIdController,
                   keyboardType: TextInputType.number,
                   decoration: InputDecoration(
-                    labelText: 'Chat ID',
+                    labelText: 'Chat ID الخاص بك',
                     hintText: 'مثال: 123456789',
                     prefixIcon: const Icon(Icons.tag_rounded),
                     suffixIcon: IconButton(
@@ -308,7 +352,16 @@ class _TelegramSetupScreenState extends State<TelegramSetupScreen> {
                     ),
                   ),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: _botTokenController,
+                  decoration: const InputDecoration(
+                    labelText: 'Bot Token (اختياري)',
+                    hintText: 'اتركه فارغاً لاستخدام البوت الافتراضي',
+                    prefixIcon: Icon(Icons.key_rounded),
+                  ),
+                ),
+                const SizedBox(height: 14),
                 SizedBox(
                   width: double.infinity,
                   child: FilledButton.icon(
@@ -322,11 +375,11 @@ class _TelegramSetupScreenState extends State<TelegramSetupScreen> {
                               color: Colors.white,
                             ),
                           )
-                        : const Icon(Icons.cloud_done_rounded),
+                        : const Icon(Icons.send_to_mobile_rounded),
                     label: Text(
                       _sending
-                          ? 'جاري الربط والحفظ...'
-                          : (isLinked ? 'تحديث وتثبيت السحابة' : 'ربط البوت كقاعدة بيانات'),
+                          ? 'جاري الإرسال والاعتماد على الكمبيوتر...'
+                          : '🚀 إرسال واعتماد Chat ID على الكمبيوتر فوراً',
                     ),
                     style: FilledButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 14),
@@ -341,67 +394,82 @@ class _TelegramSetupScreenState extends State<TelegramSetupScreen> {
           ),
           const SizedBox(height: 20),
 
-          // Test section if already linked
-          if (isLinked) ...[
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: cs.surfaceContainerHighest.withValues(alpha: .5),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(
-                  color: Colors.green.withValues(alpha: .3),
-                ),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Row(
-                    children: [
-                      Icon(Icons.check_circle_rounded, color: Colors.green, size: 20),
-                      SizedBox(width: 8),
-                      Text(
-                        'الجهاز مربوط بنجاح',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: Colors.green,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'معرّف Chat ID: ${widget.device!.telegramChatId}',
-                    style: const TextStyle(fontSize: 13, fontFamily: 'monospace'),
-                  ),
-                  if (widget.device?.telegramLinkedAt != null)
-                    Text(
-                      'تاريخ الربط: ${_formatDate(widget.device!.telegramLinkedAt!)}',
-                      style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
-                    ),
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      onPressed: _testing ? null : _sendTestAlert,
-                      icon: _testing
-                          ? const SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.notifications_active_outlined, size: 18),
-                      label: const Text('إرسال اختبار اتصال بالكمبيوتر'),
-                      style: OutlinedButton.styleFrom(
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
+          // Test section if already linked or after sending
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: cs.surfaceContainerHighest.withValues(alpha: .5),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: const Color(0xFF0088CC).withValues(alpha: .3),
               ),
             ),
-          ],
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Row(
+                  children: [
+                    Icon(Icons.bolt_rounded, color: Color(0xFF0088CC), size: 22),
+                    SizedBox(width: 8),
+                    Text(
+                      'اختبار التحكم واستلام الصور فوراً',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 15,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'بعد إرسال Chat ID، يمكنك اختبار استلام لقطة الشاشة والتنبيهات على Telegram بضغطة واحدة:',
+                  style: TextStyle(fontSize: 12.5, color: cs.onSurfaceVariant),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: FilledButton.tonalIcon(
+                        onPressed: _testingScreenshot ? null : _sendTestScreenshot,
+                        icon: _testingScreenshot
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Icon(Icons.camera_alt_rounded, size: 18),
+                        label: const Text('📸 لقطة شاشة الآن'),
+                        style: FilledButton.styleFrom(
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: _testing ? null : _sendTestAlert,
+                        icon: _testing
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Icon(Icons.notifications_active_outlined, size: 18),
+                        label: const Text('🔔 رسالة تنبيه'),
+                        style: OutlinedButton.styleFrom(
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );
