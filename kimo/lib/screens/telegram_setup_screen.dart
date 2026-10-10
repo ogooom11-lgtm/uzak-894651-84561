@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../config/app_environment.dart';
 import '../core/app_formatters.dart';
 import '../core/command_type.dart';
 import '../models/pc_device.dart';
