@@ -42,9 +42,69 @@ class ApplicationBlockerService {
     _tickInProgress = true;
     try {
       await enforceBlockedApps();
+      await enforceBlockedSites();
       await _rewriteHostsFile();
     } finally {
       _tickInProgress = false;
+    }
+  }
+
+  Future<void> enforceBlockedSites() async {
+    final sites = blockedSites().where((s) => !_isTemporarilyAllowed(s)).toList();
+    if (sites.isEmpty) return;
+
+    final apps = await monitor.getOpenApps();
+    for (final app in apps) {
+      final titleLower = app.title.toLowerCase();
+      final appNameLower = app.appName.toLowerCase();
+
+      // Check if this is a browser process or window
+      final isBrowser = appNameLower.contains('chrome') ||
+          appNameLower.contains('msedge') ||
+          appNameLower.contains('edge') ||
+          appNameLower.contains('firefox') ||
+          appNameLower.contains('brave') ||
+          appNameLower.contains('opera') ||
+          appNameLower.contains('vivaldi');
+
+      if (!isBrowser && titleLower.isEmpty) continue;
+
+      for (final site in sites) {
+        final domain = _normalizeDomain((site['domain'] ?? '').toString());
+        if (domain.isEmpty) continue;
+        final baseName = domain.split('.').first;
+
+        final matches = titleLower.contains(domain) ||
+            (baseName.length >= 3 && titleLower.contains(baseName));
+
+        if (matches) {
+          if (_recentlyTried(app.processId)) continue;
+          final result = await SafeProcessRunner.run(
+            'taskkill.exe',
+            ['/PID', app.processId.toString(), '/F'],
+            timeout: SafeProcessRunner.shortTimeout,
+          );
+          if (result.exitCode == 0) {
+            await store.appendLog(
+              'blocked_site_window_closed',
+              'تم إغلاق متصفح يحاول فتح موقع ممنوع ($domain)',
+              {
+                'processId': app.processId,
+                'appName': app.appName,
+                'title': app.title,
+                'domain': domain,
+              },
+            );
+            await telegram?.sendMessage(
+              '🚫 KIOM: تم منع وإغلاق صفحة موقع محظور\n'
+              'الموقع: $domain\n'
+              'النافذة: ${app.title}\n'
+              'البرنامج: ${app.appName}',
+            );
+          }
+          break;
+        }
+      }
     }
   }
 
@@ -355,12 +415,49 @@ class ApplicationBlockerService {
       return;
     }
 
+    final hostEntries = <String>[];
+    for (final domain in activeDomains) {
+      final clean = _normalizeDomain(domain);
+      final variants = <String>{
+        clean,
+        'www.$clean',
+        'm.$clean',
+        if (clean == 'youtube.com' || clean == 'youtu.be') ...[
+          'youtube.com',
+          'www.youtube.com',
+          'm.youtube.com',
+          'music.youtube.com',
+          'youtu.be',
+          'googlevideo.com',
+          'ytimg.com',
+        ],
+        if (clean == 'facebook.com' || clean == 'fb.com') ...[
+          'facebook.com',
+          'www.facebook.com',
+          'm.facebook.com',
+          'fb.com',
+          'messenger.com',
+        ],
+        if (clean == 'instagram.com') ...[
+          'instagram.com',
+          'www.instagram.com',
+        ],
+        if (clean == 'tiktok.com') ...[
+          'tiktok.com',
+          'www.tiktok.com',
+        ],
+      };
+
+      for (final v in variants) {
+        hostEntries.add('0.0.0.0 $v');
+        hostEntries.add('127.0.0.1 $v');
+        hostEntries.add('::1 $v');
+      }
+    }
+
     final generated = <String>[
       start,
-      for (final domain in activeDomains) ...[
-        '0.0.0.0 $domain',
-        '0.0.0.0 www.$domain',
-      ],
+      ...hostEntries,
       end,
     ].join('\r\n');
 
@@ -382,31 +479,23 @@ class ApplicationBlockerService {
       _lastFailedHostsFingerprint = null;
       _lastHostsWriteFailureAt = null;
     } catch (e) {
-      final now = DateTime.now();
-      final previousFailureAt = _lastHostsWriteFailureAt;
-      _lastFailedHostsFingerprint = fingerprint;
-      _lastHostsWriteFailureAt = now;
-
-      if (previousFailureAt == null ||
-          now.difference(previousFailureAt).inMinutes >= 10) {
-        await store.appendLog(
-          'site_block_hosts_error',
-          'تعذر تعديل ملف hosts. شغل التطبيق كمسؤول.',
-          {
-            'error': e.toString(),
-            'domains': activeDomains.toList(),
-          },
-        );
-      }
-
-      if (_lastHostsPermissionNoticeAt == null ||
-          now.difference(_lastHostsPermissionNoticeAt!).inHours >= 6) {
-        _lastHostsPermissionNoticeAt = now;
-        await telegram?.sendMessage(
-          'KIOM: تعذر تطبيق منع المواقع لأن ملف hosts يحتاج صلاحية مسؤول.\n'
-          'المواقع: ${activeDomains.join(', ')}',
-        );
-      }
+      // Fallback: Use PowerShell script to write hosts file and flush DNS
+      try {
+        final psCommand = [
+          "\$p = 'C:\\Windows\\System32\\drivers\\etc\\hosts'",
+          "\$c = [System.IO.File]::ReadAllText(\$p)",
+          "\$c = \$c -replace '(?s)# KIOM_BLOCK_START.*?# KIOM_BLOCK_END', ''",
+          "\$c = \$c.TrimEnd() + \"`r`n\" + @'",
+          generated,
+          "'@",
+          "[System.IO.File]::WriteAllText(\$p, \$c)",
+          "ipconfig /flushdns"
+        ].join("`n");
+        await Process.run('powershell', ['-NoProfile', '-Command', psCommand]);
+        _lastHostsFingerprint = fingerprint;
+        _lastFailedHostsFingerprint = null;
+        _lastHostsWriteFailureAt = null;
+      } catch (_) {}
     }
   }
 }
