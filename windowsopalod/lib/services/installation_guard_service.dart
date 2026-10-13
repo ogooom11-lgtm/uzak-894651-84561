@@ -39,6 +39,17 @@ class InstallationGuardService {
     if (_scanInProgress) return;
     _scanInProgress = true;
     try {
+      final mode = store.get<String>('installGuardMode') ?? 'smart_guard';
+      if (mode == 'disabled') return;
+
+      // Check global installation window
+      final globalPass = DateTime.tryParse(
+        (store.get<String>('installGuardGlobalPassUntil') ?? '').toString(),
+      );
+      if (globalPass != null && globalPass.isAfter(DateTime.now())) {
+        return;
+      }
+
       final installers = await _runningInstallers();
       if (installers.isEmpty) return;
 
@@ -202,16 +213,39 @@ $items | ConvertTo-Json -Compress -Depth 3
       requestId,
       payload,
     );
+    final fileName = _exeName(installer);
+    final filePath = _path(installer);
+    final windowTitle = (installer['MainWindowTitle'] ?? '').toString();
+
     await store.appendLog(
       'install_attempt',
-      'تم اكتشاف محاولة تثبيت وتحتاج موافقة الهاتف',
+      'تم اكتشاف محاولة تثبيت وتحتاج موافقة',
       payload,
     );
+
+    final text = '🛡️ <b>تم اعتراض محاولة تثبيت برنامج!</b>\n\n'
+        '📦 <b>المثبت:</b> <code>$fileName</code>\n'
+        '📍 <b>المسار:</b> <code>$filePath</code>\n'
+        '🏷️ <b>النافذة:</b> $windowTitle\n'
+        '💻 <b>الكمبيوتر:</b> $deviceId\n\n'
+        'تم إيقاف المثبت تلقائياً. اختر الإجراء المطلوب:';
+
+    final inlineKeyboard = {
+      'inline_keyboard': [
+        [
+          {'text': '✅ سماح 15 دقيقة', 'callback_data': 'inst_allow_15:$requestId'},
+          {'text': '✅ سماح ساعة', 'callback_data': 'inst_allow_60:$requestId'},
+        ],
+        [
+          {'text': '✅ سماح دائم', 'callback_data': 'inst_allow_perm:$requestId'},
+          {'text': '🚫 حظر ورفض', 'callback_data': 'inst_reject:$requestId'},
+        ],
+      ],
+    };
+
     await telegram?.sendMessage(
-      'KIOM: محاولة تثبيت تحتاج موافقة\n'
-      'الملف: ${payload['fileName']}\n'
-      'المسار: ${payload['filePath']}\n'
-      'الجهاز: $deviceId',
+      text,
+      replyMarkup: inlineKeyboard,
     );
   }
 

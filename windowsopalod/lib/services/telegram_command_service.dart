@@ -644,6 +644,50 @@ class TelegramCommandService {
     }
 
     // 3. Direct execution from callback data
+    if (data.startsWith('inst_allow_15:') ||
+        data.startsWith('inst_allow_60:') ||
+        data.startsWith('inst_allow_perm:') ||
+        data.startsWith('inst_reject:')) {
+      final isPerm = data.startsWith('inst_allow_perm:');
+      final is60 = data.startsWith('inst_allow_60:');
+      final isReject = data.startsWith('inst_reject:');
+
+      final reqId = isReject
+          ? data.substring('inst_reject:'.length)
+          : (isPerm
+              ? data.substring('inst_allow_perm:'.length)
+              : (is60 ? data.substring('inst_allow_60:'.length) : data.substring('inst_allow_15:'.length)));
+
+      if (isReject) {
+        await executor.executeTelegramCommand(
+          type: 'reject_install',
+          payload: {'requestId': reqId},
+        );
+        await _editOrSendMessage(
+          '🚫 <b>تم رفض محاولة التثبيت وحظر المثبت بنجاح.</b>',
+          chatId: chatId,
+          messageId: messageId,
+        );
+      } else {
+        final durationSecs = isPerm ? 3650 * 86400 : (is60 ? 3600 : 900);
+        await executor.executeTelegramCommand(
+          type: 'approve_install',
+          payload: {
+            'requestId': reqId,
+            'durationSeconds': durationSecs,
+            'always': isPerm,
+          },
+        );
+        final durText = isPerm ? 'دائم' : (is60 ? 'ساعة واحدة' : '15 دقيقة');
+        await _editOrSendMessage(
+          '✅ <b>تمت الموافقة على التثبيت بنجاح (المدة: $durText).</b>\nيمكن تشغيل المثبت الآن بحرية.',
+          chatId: chatId,
+          messageId: messageId,
+        );
+      }
+      return;
+    }
+
     if (data.startsWith('exec_open:')) {
       final path = data.substring('exec_open:'.length);
       await _handleExecutableText('open $path', chatId: chatId, replyToMessageId: messageId);
@@ -844,6 +888,41 @@ class TelegramCommandService {
         chatId: chatId,
         replyToMessageId: replyToMessageId,
         replyMarkup: _dashboardInlineMenu(),
+      );
+      return true;
+    }
+
+    if (lower.startsWith('/allow_install') ||
+        lower.startsWith('/allowinstall') ||
+        lower.startsWith('allow install') ||
+        lower.startsWith('سماح تثبيت') ||
+        lower.startsWith('سماح بالتثبيت')) {
+      final parts = text.split(RegExp(r'\s+'));
+      final mins = parts.length > 1 ? (int.tryParse(parts[1]) ?? 15) : 15;
+      final until = DateTime.now().add(Duration(minutes: mins));
+      await store.set('installGuardGlobalPassUntil', until.toIso8601String());
+      await telegram.sendMessage(
+        '🔓 <b>تم فتح نافذة السماح بتثبيت البرامج لمدة $mins دقيقة.</b>\n\n'
+        '⏰ سارية المفعول حتى: <b>${until.hour.toString().padLeft(2, '0')}:${until.minute.toString().padLeft(2, '0')}</b>\n'
+        '🛡️ سيتم إعادة قفل وحظر التثبيت تلقائياً بعد انتهاء المدة.',
+        chatId: chatId,
+        replyToMessageId: replyToMessageId,
+      );
+      return true;
+    }
+
+    if (lower == '/block_install' ||
+        lower == 'block install' ||
+        lower == 'منع التثبيت' ||
+        lower == 'قفل التثبيت' ||
+        lower == 'حظر التثبيت') {
+      await store.set('installGuardGlobalPassUntil', null);
+      await store.set('installGuardMode', 'smart_guard');
+      await telegram.sendMessage(
+        '🛡️ <b>تم تفعيل حظر وقفل تثبيت البرامج فوراً.</b>\n'
+        'سيتم اعتراض وإغلاق أي برنامج تثبيت جديد تلقائياً وإرسال تنبيه للموافقة.',
+        chatId: chatId,
+        replyToMessageId: replyToMessageId,
       );
       return true;
     }
@@ -1402,6 +1481,10 @@ class TelegramCommandService {
         return 'specs';
       case 'clip':
         return 'clip';
+      case 'allow_install_15':
+        return '/allow_install 15';
+      case 'block_install':
+        return '/block_install';
       case 'screenshot':
         return 'screenshot';
       case 'health':
@@ -1798,11 +1881,14 @@ class TelegramCommandService {
           button('⚡ تفعيل كافة الصلاحيات والأذونات فوراً', 'allow_all_permissions'),
         ],
         [
+          button('🔓 سماح بتثبيت البرامج (15د)', 'allow_install_15'),
+          button('🛡️ قفل ومنع التثبيت فوراً', 'block_install'),
+        ],
+        [
           button('🛡️ قواعد حماية المسارات', 'path_rules'),
           button('🚫 قائمة الممنوعات', 'blocked_items'),
         ],
         [
-          button('⚙️ فتح شاشة الأذونات بالكمبيوتر', 'permissions'),
           button('🔑 إظهار رمز الربط QR', 'qr'),
         ],
         [
