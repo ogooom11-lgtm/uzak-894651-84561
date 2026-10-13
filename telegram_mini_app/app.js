@@ -217,6 +217,43 @@ function handleBrowseCustomPath() {
   sendPcCommand(`/browse ${path}`);
 }
 
+function handleCloudUploadUrl() {
+  const path = document.getElementById('inputCloudLocalPath').value.trim();
+  const url = document.getElementById('inputCloudUploadUrl').value.trim();
+  if (!path || !url) {
+    showToast('⚠️ يرجى إدخال مسار الملف ورابط الرفع');
+    return;
+  }
+  sendPcCommand(`/upload_to ${path} ${url}`);
+}
+
+function handleSyncOneDrive() {
+  const path = document.getElementById('inputCloudLocalPath').value.trim();
+  if (!path) {
+    showToast('⚠️ يرجى إدخال مسار الملف');
+    return;
+  }
+  sendPcCommand(`/sync_onedrive ${path}`);
+}
+
+function handleSyncGDrive() {
+  const path = document.getElementById('inputCloudLocalPath').value.trim();
+  if (!path) {
+    showToast('⚠️ يرجى إدخال مسار الملف');
+    return;
+  }
+  sendPcCommand(`/sync_gdrive ${path}`);
+}
+
+function handleFastCloudUpload() {
+  const path = document.getElementById('inputCloudLocalPath').value.trim();
+  if (!path) {
+    showToast('⚠️ يرجى إدخال مسار الملف');
+    return;
+  }
+  sendPcCommand(`/cloud_upload ${path}`);
+}
+
 function handleFetchFile() {
   const path = document.getElementById('inputFetchPath').value.trim();
   if (!path) {

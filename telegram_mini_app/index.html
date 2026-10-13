@@ -77,6 +77,18 @@
             <span class="card-title">تقرير الصحة</span>
             <span class="card-desc">المعالج، الرام، النوافذ</span>
           </button>
+
+          <button class="action-card" onclick="sendPcCommand('/webcam')">
+            <span class="card-icon">📷</span>
+            <span class="card-title">كاميرا الويب</span>
+            <span class="card-desc">التقاط صورة من كاميرا اللابتوب</span>
+          </button>
+
+          <button class="action-card" onclick="sendPcCommand('/mic 10')">
+            <span class="card-icon">🎙️</span>
+            <span class="card-title">ميكروفون الغرفة</span>
+            <span class="card-desc">تسجيل صوتي 10 ثوانٍ وإرساله</span>
+          </button>
         </div>
 
         <!-- Installation Guard Fast Controls -->
@@ -283,6 +295,21 @@
           <div class="input-group mt-2">
             <input type="text" id="inputFetchPath" placeholder="المسار الكامل للملف أو المجلد..." class="form-input font-mono">
             <button class="btn btn-success" onclick="handleFetchFile()">تحميل للمحادثة 📦</button>
+          </div>
+        </div>
+
+        <div class="card mt-4">
+          <span class="card-section-title">☁️ رفع ملف إلى OneDrive أو Google Drive أو رابط سحابي</span>
+          <p class="text-muted text-sm mt-1">رفع الملف في الخلفية وإرسال تقرير الإنجاز إلى محادثتك.</p>
+          <div class="mt-2">
+            <input type="text" id="inputCloudLocalPath" placeholder="مسار الملف بالكمبيوتر (C:\folder\file.zip)" class="form-input font-mono mb-2">
+            <input type="text" id="inputCloudUploadUrl" placeholder="رابط الرفع السحابي (اختياري لو أردت الرفع المباشر لرابطك)" class="form-input font-mono mb-2">
+            <div class="grid grid-3">
+              <button class="btn btn-primary" onclick="handleCloudUploadUrl()">رفع للرابط 🚀</button>
+              <button class="btn btn-secondary" onclick="handleSyncOneDrive()">OneDrive ☁️</button>
+              <button class="btn btn-secondary" onclick="handleSyncGDrive()">GDrive 📂</button>
+            </div>
+            <button class="btn btn-outline w-100 mt-2" onclick="handleFastCloudUpload()">⚡ رفع لسحابة سريعة وتوليد رابط تحميل</button>
           </div>
         </div>
       </section>

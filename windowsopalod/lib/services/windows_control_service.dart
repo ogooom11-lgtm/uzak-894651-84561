@@ -565,6 +565,358 @@ if (-not (Test-Path \$destPath)) {
     );
   }
 
+  Future<WindowsControlResult> recordMicrophoneAudio({
+    int seconds = 8,
+    String? outputPath,
+  }) async {
+    final dur = seconds.clamp(2, 30);
+    final target = outputPath ??
+        '${Directory.systemTemp.path}\\kiom_mic_${DateTime.now().millisecondsSinceEpoch}.wav';
+    final script = '''
+\$ErrorActionPreference = 'Stop'
+\$target = '$target'
+
+Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+using System.Threading;
+
+public class KiomAudioRecorder {
+    [DllImport("winmm.dll", EntryPoint = "mciSendStringA", CharSet = CharSet.Ansi, SetLastError = true, ExactSpelling = true)]
+    private static extern int mciSendString(string lpstrCommand, string lpstrReturnString, int uReturnLength, int hwndCallback);
+
+    public static bool Record(string path, int durationSeconds) {
+        try {
+            mciSendString("close recsound", "", 0, 0);
+            mciSendString("open new Type waveaudio Alias recsound", "", 0, 0);
+            mciSendString("record recsound", "", 0, 0);
+            Thread.Sleep(durationSeconds * 1000);
+            mciSendString("save recsound \\"" + path + "\\"", "", 0, 0);
+            mciSendString("close recsound", "", 0, 0);
+            return System.IO.File.Exists(path) && (new System.IO.FileInfo(path)).Length > 100;
+        } catch {
+            return false;
+        }
+    }
+}
+"@ -ErrorAction SilentlyContinue
+
+\$res = [KiomAudioRecorder]::Record(\$target, $dur)
+if (\$res -and (Test-Path \$target)) {
+    [PSCustomObject]@{
+        Success = \$true
+        Path = \$target
+        Size = (Get-Item \$target).Length
+    } | ConvertTo-Json -Compress
+} else {
+    throw "Failed to record audio from microphone"
+}
+''';
+    final result = await SafeProcessRunner.powershell(
+      script,
+      timeout: Duration(seconds: dur + 10),
+    );
+    final payload = _payload(result);
+    final stdout = result.stdout.toString().trim();
+    if (stdout.startsWith('{')) {
+      try {
+        final decoded = jsonDecode(stdout);
+        if (decoded is Map) payload.addAll(decoded.cast<String, dynamic>());
+      } catch (_) {}
+    }
+    final file = File(target);
+    final exists = await file.exists();
+    return WindowsControlResult(
+      success: exists && (await file.length()) > 100,
+      message: exists ? 'تم تسجيل الصوت بنجاح' : 'تعذر تسجيل الصوت من الميكروفون',
+      payload: {...payload, 'filePath': target},
+    );
+  }
+
+  Future<WindowsControlResult> captureWebcamPhoto({String? outputPath}) async {
+    final target = outputPath ??
+        '${Directory.systemTemp.path}\\kiom_cam_${DateTime.now().millisecondsSinceEpoch}.jpg';
+    final script = '''
+\$ErrorActionPreference = 'Stop'
+\$target = '$target'
+
+Add-Type -AssemblyName System.Drawing
+Add-Type -AssemblyName System.Windows.Forms
+
+Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+using System.Drawing;
+using System.Drawing.Imaging;
+
+public class KiomWebcam {
+    [DllImport("avicap32.dll")]
+    public static extern IntPtr capCreateCaptureWindowA(string lpszWindowName, int dwStyle, int x, int y, int nWidth, int nHeight, IntPtr hWnd, int nID);
+
+    [DllImport("user32.dll", EntryPoint = "SendMessage")]
+    public static extern int SendMessage(IntPtr hWnd, uint Msg, int wParam, int lParam);
+
+    [DllImport("user32.dll", EntryPoint = "SendMessage")]
+    public static extern int SendMessageString(IntPtr hWnd, uint Msg, int wParam, string lParam);
+
+    [DllImport("user32.dll")]
+    public static extern bool DestroyWindow(IntPtr hWnd);
+
+    public const int WM_CAP_CONNECT = 0x40A;
+    public const int WM_CAP_DISCONNECT = 0x40B;
+    public const int WM_CAP_GRAB_FRAME = 0x43C;
+    public const int WM_CAP_SAVEDIB = 0x419;
+
+    public static bool Capture(string path) {
+        IntPtr hWnd = capCreateCaptureWindowA("KiomCam", 0, 0, 0, 640, 480, IntPtr.Zero, 0);
+        if (hWnd == IntPtr.Zero) return false;
+        try {
+            if (SendMessage(hWnd, WM_CAP_CONNECT, 0, 0) != 0) {
+                System.Threading.Thread.Sleep(500);
+                SendMessage(hWnd, WM_CAP_GRAB_FRAME, 0, 0);
+                string bmpPath = path + ".bmp";
+                SendMessageString(hWnd, WM_CAP_SAVEDIB, 0, bmpPath);
+                SendMessage(hWnd, WM_CAP_DISCONNECT, 0, 0);
+                DestroyWindow(hWnd);
+
+                if (System.IO.File.Exists(bmpPath)) {
+                    using (Image img = Image.FromFile(bmpPath)) {
+                        img.Save(path, ImageFormat.Jpeg);
+                    }
+                    System.IO.File.Delete(bmpPath);
+                    return true;
+                }
+            }
+        } catch {}
+        if (hWnd != IntPtr.Zero) DestroyWindow(hWnd);
+        return false;
+    }
+}
+"@ -ErrorAction SilentlyContinue
+
+\$res = [KiomWebcam]::Capture(\$target)
+if (\$res -and (Test-Path \$target)) {
+    [PSCustomObject]@{
+        Success = \$true
+        Path = \$target
+        Size = (Get-Item \$target).Length
+    } | ConvertTo-Json -Compress
+} else {
+    throw "No webcam connected or failed to capture frame"
+}
+''';
+    final result = await SafeProcessRunner.powershell(
+      script,
+      timeout: const Duration(seconds: 15),
+    );
+    final payload = _payload(result);
+    final stdout = result.stdout.toString().trim();
+    if (stdout.startsWith('{')) {
+      try {
+        final decoded = jsonDecode(stdout);
+        if (decoded is Map) payload.addAll(decoded.cast<String, dynamic>());
+      } catch (_) {}
+    }
+    final file = File(target);
+    final exists = await file.exists();
+    return WindowsControlResult(
+      success: exists && (await file.length()) > 100,
+      message: exists ? 'تم التقاط صورة من كاميرا الويب بنجاح' : 'تعذر التقاط صورة (تأكد من توصيل الكاميرا)',
+      payload: {...payload, 'filePath': target},
+    );
+  }
+
+  Future<WindowsControlResult> uploadFileToCloudUrl(String localPath, String uploadUrl) async {
+    final cleanPath = localPath.trim();
+    final cleanUrl = uploadUrl.trim();
+
+    final script = '''
+\$ErrorActionPreference = 'Stop'
+\$path = "$cleanPath"
+\$url = "$cleanUrl"
+
+if (-not (Test-Path \$path)) { throw "File or folder does not exist: \$path" }
+
+\$uploadFile = \$path
+\$isDir = (Get-Item \$path) -is [System.IO.DirectoryInfo]
+if (\$isDir) {
+    \$zipPath = Join-Path \$env:TEMP ("kiom_cloud_" + [guid]::NewGuid().ToString().Substring(0,8) + ".zip")
+    Compress-Archive -Path "\$path\\*" -DestinationPath \$zipPath -Force
+    \$uploadFile = \$zipPath
+}
+
+\$fileBytes = [System.IO.File]::ReadAllBytes(\$uploadFile)
+\$fileName = [System.IO.Path]::GetFileName(\$uploadFile)
+
+\$headers = @{
+    "User-Agent" = "KiomCloudUploader/1.0"
+}
+
+try {
+    # Attempt PUT upload first (Common for OneDrive / Google Drive / S3 pre-signed upload URLs)
+    \$resp = Invoke-RestMethod -Uri \$url -Method Put -Body \$fileBytes -Headers \$headers -ContentType "application/octet-stream" -ErrorAction Stop
+    [PSCustomObject]@{
+        Success = \$true
+        Method = "PUT"
+        File = \$fileName
+        Response = (\$resp | Out-String).Trim()
+    } | ConvertTo-Json -Compress
+} catch {
+    # Fallback to POST multipart upload (Webhooks / Form upload endpoints)
+    \$resp = Invoke-RestMethod -Uri \$url -Method Post -InFile \$uploadFile -Headers \$headers -ErrorAction Stop
+    [PSCustomObject]@{
+        Success = \$true
+        Method = "POST"
+        File = \$fileName
+        Response = (\$resp | Out-String).Trim()
+    } | ConvertTo-Json -Compress
+}
+''';
+    final result = await SafeProcessRunner.powershell(
+      script,
+      timeout: const Duration(minutes: 10),
+    );
+    final payload = _payload(result);
+    return WindowsControlResult(
+      success: result.exitCode == 0,
+      message: result.exitCode == 0
+          ? 'تم رفع الملف بنجاح إلى الرابط السحابي'
+          : 'تعذر رفع الملف إلى الرابط: ${_clean(result)}',
+      payload: payload,
+    );
+  }
+
+  Future<WindowsControlResult> copyToCloudSyncFolder(String localPath, {String provider = 'onedrive'}) async {
+    final cleanPath = localPath.trim();
+    final script = '''
+\$ErrorActionPreference = 'Stop'
+\$src = "$cleanPath"
+if (-not (Test-Path \$src)) { throw "File or folder does not exist: \$src" }
+
+\$provider = "$provider".ToLower()
+\$targetDir = ""
+
+if (\$provider -eq "onedrive") {
+    \$candidates = @(
+        \$env:OneDrive,
+        (Join-Path \$env:USERPROFILE "OneDrive"),
+        (Join-Path \$env:USERPROFILE "OneDrive - Personal")
+    )
+    foreach (\$c in \$candidates) {
+        if (\$c -and (Test-Path \$c)) { \$targetDir = Join-Path \$c "KiomUploads"; break }
+    }
+} else {
+    \$candidates = @(
+        "G:\\My Drive",
+        "G:\\Drive",
+        (Join-Path \$env:USERPROFILE "Google Drive"),
+        (Join-Path \$env:USERPROFILE "GoogleDrive")
+    )
+    foreach (\$c in \$candidates) {
+        if (\$c -and (Test-Path \$c)) { \$targetDir = Join-Path \$c "KiomUploads"; break }
+    }
+}
+
+if (-not \$targetDir) {
+    throw "Cloud folder for '\$provider' is not configured or not found on this PC."
+}
+
+if (-not (Test-Path \$targetDir)) {
+    New-Item -ItemType Directory -Path \$targetDir -Force | Out-Null
+}
+
+Copy-Item -Path \$src -Destination \$targetDir -Recurse -Force
+[PSCustomObject]@{
+    Provider = \$provider
+    Destination = \$targetDir
+    FileName = [System.IO.Path]::GetFileName(\$src)
+} | ConvertTo-Json -Compress
+''';
+    final result = await SafeProcessRunner.powershell(
+      script,
+      timeout: const Duration(minutes: 2),
+    );
+    final payload = _payload(result);
+    final stdout = result.stdout.toString().trim();
+    if (stdout.startsWith('{')) {
+      try {
+        final decoded = jsonDecode(stdout);
+        if (decoded is Map) payload.addAll(decoded.cast<String, dynamic>());
+      } catch (_) {}
+    }
+    return WindowsControlResult(
+      success: result.exitCode == 0,
+      message: result.exitCode == 0
+          ? 'تم نسخ الملف إلى مجلد $provider السحابي (${payload['Destination'] ?? ''})، وسيقوم بالمزامنة تلقائياً في الخلفية.'
+          : 'تعذر النسخ: ${_clean(result)}',
+      payload: payload,
+    );
+  }
+
+  Future<WindowsControlResult> uploadToFastCloud(String localPath) async {
+    final cleanPath = localPath.trim();
+    final script = '''
+\$ErrorActionPreference = 'Stop'
+\$path = "$cleanPath"
+if (-not (Test-Path \$path)) { throw "File or folder does not exist: \$path" }
+
+\$uploadFile = \$path
+\$isDir = (Get-Item \$path) -is [System.IO.DirectoryInfo]
+if (\$isDir) {
+    \$zipPath = Join-Path \$env:TEMP ("kiom_cloud_" + [guid]::NewGuid().ToString().Substring(0,8) + ".zip")
+    Compress-Archive -Path "\$path\\*" -DestinationPath \$zipPath -Force
+    \$uploadFile = \$zipPath
+}
+
+# Upload to tmpfiles.org
+try {
+    \$resp = Invoke-RestMethod -Uri "https://tmpfiles.org/api/v1/upload" -Method Post -InFile \$uploadFile -Form @{ file = (Get-Item \$uploadFile) } -ErrorAction Stop
+    \$url = \$resp.data.url
+    # Convert view URL to direct download URL
+    if (\$url -match "tmpfiles.org/(.+)") {
+        \$directUrl = "https://tmpfiles.org/dl/" + \$matches[1]
+    } else {
+        \$directUrl = \$url
+    }
+    [PSCustomObject]@{
+        Success = \$true
+        DirectUrl = \$directUrl
+        ViewUrl = \$url
+        FileName = [System.IO.Path]::GetFileName(\$uploadFile)
+    } | ConvertTo-Json -Compress
+} catch {
+    # Fallback to transfer.sh
+    \$fileName = [System.IO.Path]::GetFileName(\$uploadFile)
+    \$resp = Invoke-RestMethod -Uri ("https://transfer.sh/" + \$fileName) -Method Put -InFile \$uploadFile -ErrorAction Stop
+    [PSCustomObject]@{
+        Success = \$true
+        DirectUrl = \$resp.ToString().Trim()
+        FileName = \$fileName
+    } | ConvertTo-Json -Compress
+}
+''';
+    final result = await SafeProcessRunner.powershell(
+      script,
+      timeout: const Duration(minutes: 5),
+    );
+    final payload = _payload(result);
+    final stdout = result.stdout.toString().trim();
+    if (stdout.startsWith('{')) {
+      try {
+        final decoded = jsonDecode(stdout);
+        if (decoded is Map) payload.addAll(decoded.cast<String, dynamic>());
+      } catch (_) {}
+    }
+    final directUrl = payload['DirectUrl'] ?? '';
+    return WindowsControlResult(
+      success: result.exitCode == 0 && directUrl.toString().isNotEmpty,
+      message: result.exitCode == 0
+          ? 'تم رفع الملف بنجاح! الرابط السحابي:\n$directUrl'
+          : 'فشل الرفع السحابي: ${_clean(result)}',
+      payload: payload,
+    );
+  }
+
   Future<ProcessResult> _runPowerShell(String script) {
     return SafeProcessRunner.powershell(
       script,

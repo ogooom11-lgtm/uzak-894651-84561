@@ -372,6 +372,48 @@ class TelegramNotifierService {
     }
   }
 
+  Future<bool> sendVoice({
+    required String filePath,
+    String? chatId,
+    String caption = '',
+    int? replyToMessageId,
+  }) async {
+    if (!hasBotToken) return false;
+    final targetChatId = (chatId ?? effectiveChatId).trim();
+    if (targetChatId.isEmpty) return false;
+    try {
+      final file = File(filePath);
+      if (!await file.exists()) return false;
+
+      final request =
+          http.MultipartRequest('POST', Uri.parse(_api('sendVoice')))
+            ..fields['chat_id'] = targetChatId
+            ..fields['caption'] = caption;
+      if (replyToMessageId != null) {
+        request.fields['reply_to_message_id'] = replyToMessageId.toString();
+      }
+      request.files.add(await http.MultipartFile.fromPath('voice', filePath));
+
+      final response = await request.send().timeout(const Duration(seconds: 40));
+      if (response.statusCode >= 200 && response.statusCode < 300) return true;
+
+      return await sendDocument(
+        filePath: filePath,
+        chatId: chatId,
+        caption: caption,
+        replyToMessageId: replyToMessageId,
+      );
+    } catch (e) {
+      await store.appendLog('telegram_voice_exception', e.toString());
+      return await sendDocument(
+        filePath: filePath,
+        chatId: chatId,
+        caption: caption,
+        replyToMessageId: replyToMessageId,
+      );
+    }
+  }
+
   Future<bool> sendDocument({
     required String filePath,
     String? chatId,
