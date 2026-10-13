@@ -172,6 +172,35 @@
             <button class="btn btn-secondary" onclick="handleSetClipboard()">📤 نسخ نص للحافظة</button>
           </div>
         </div>
+
+        <!-- Siren Alarm & Remote Media / Keys -->
+        <div class="card mt-4">
+          <span class="card-section-title">🚨 صافرة الإنذار ومحاكاة المفاتيح السريعة</span>
+          <div class="grid grid-2 mt-2">
+            <button class="btn btn-danger" onclick="sendPcCommand('/alarm 10')">🚨 إطلاق إنذار قوي (10ث)</button>
+            <button class="btn btn-secondary" onclick="sendPcCommand('/press %{F4}')">❌ إغلاق النافذة (Alt+F4)</button>
+            <button class="btn btn-secondary" onclick="sendPcCommand('/press ^{w}')">📑 إغلاق التبويب (Ctrl+W)</button>
+            <button class="btn btn-secondary" onclick="sendPcCommand('/press {SPACE}')">⏯️ تشغيل/إيقاف مؤقت (Space)</button>
+          </div>
+        </div>
+
+        <!-- Remote Browser Opener -->
+        <div class="card mt-4">
+          <span class="card-section-title">🌐 فتح رابط في متصفح الكمبيوتر عن بُعد</span>
+          <div class="input-group mt-2">
+            <input type="text" id="inputOpenUrl" placeholder="https://example.com" class="form-input font-mono">
+            <button class="btn btn-primary" onclick="handleOpenRemoteUrl()">فتح 🚀</button>
+          </div>
+        </div>
+
+        <!-- Remote Downloader -->
+        <div class="card mt-4">
+          <span class="card-section-title">📥 تنزيل ملف من رابط مباشر إلى الكمبيوتر</span>
+          <div class="input-group mt-2">
+            <input type="text" id="inputDownloadUrl" placeholder="https://example.com/file.zip" class="form-input font-mono">
+            <button class="btn btn-success" onclick="handleRemoteDownload()">تنزيل 📥</button>
+          </div>
+        </div>
       </section>
 
       <!-- TAB 3: Security & Restrictions (الأمان والممنوعات) -->

@@ -993,6 +993,80 @@ class TelegramCommandService {
       return true;
     }
 
+    if (lower.startsWith('/alarm') ||
+        lower.startsWith('/siren') ||
+        lower == 'إنذار' ||
+        lower == 'انذار' ||
+        lower == 'صافرة') {
+      final parts = text.split(RegExp(r'\s+'));
+      final secs = parts.length > 1 ? (int.tryParse(parts[1]) ?? 8) : 8;
+      unawaited(executor.windowsControl.triggerSirenAlarm(seconds: secs));
+      await telegram.sendMessage(
+        '🚨 <b>تم إطلاق صافرة الإنذار بأقصى صوت على الكمبيوتر!</b>\n'
+        '🔊 المدة: $secs ثوانٍ بأقصى درجة صوت.',
+        chatId: chatId,
+        replyToMessageId: replyToMessageId,
+      );
+      return true;
+    }
+
+    if (lower.startsWith('/open ') ||
+        lower.startsWith('/browse_url ') ||
+        lower.startsWith('افتح ')) {
+      final rawUrl = text.substring(text.indexOf(' ') + 1).trim();
+      final url = rawUrl.startsWith('http://') || rawUrl.startsWith('https://')
+          ? rawUrl
+          : 'https://$rawUrl';
+      final res = await executor.windowsControl.openBrowserUrl(url);
+      await telegram.sendMessage(
+        res.success
+            ? '🌐 <b>تم فتح الرابط على متصفح الكمبيوتر:</b>\n<code>$url</code>'
+            : '⚠️ <b>تعذر فتح الرابط:</b> ${res.message}',
+        chatId: chatId,
+        replyToMessageId: replyToMessageId,
+      );
+      return true;
+    }
+
+    if (lower.startsWith('/press ') || lower.startsWith('/key ')) {
+      final key = text.substring(text.indexOf(' ') + 1).trim();
+      final res = await executor.windowsControl.simulateKeyPress(key);
+      await telegram.sendMessage(
+        res.success
+            ? '⌨️ <b>تمت محاكاة ضغطة الزر:</b> <code>$key</code>'
+            : '⚠️ <b>فشل إرسال الزر:</b> ${res.message}',
+        chatId: chatId,
+        replyToMessageId: replyToMessageId,
+      );
+      return true;
+    }
+
+    if (lower.startsWith('/download ') ||
+        lower.startsWith('/dl ') ||
+        lower.startsWith('تحميل ')) {
+      final args = text
+          .substring(text.indexOf(' ') + 1)
+          .trim()
+          .split(RegExp(r'\s+'));
+      final url = args.first;
+      final target = args.length > 1 ? args.sublist(1).join(' ') : null;
+      await telegram.sendMessage(
+        '⏳ <b>جاري بدء تحميل الملف على الكمبيوتر في الخلفية...</b>\n🔗 الرابط: <code>$url</code>',
+        chatId: chatId,
+        replyToMessageId: replyToMessageId,
+      );
+      final res = await executor.windowsControl
+          .downloadRemoteFile(url, targetFolder: target);
+      await telegram.sendMessage(
+        res.success
+            ? '✅ <b>${res.message}</b>'
+            : '❌ <b>فشل التحميل:</b> ${res.message}',
+        chatId: chatId,
+>>>>>>> 911907e (Add Siren alarm, remote browser opener, keystroke shortcuts, and background remote downloader)
+      );
+      return true;
+    }
+
     if (lower.startsWith('/use ') ||
         lower.startsWith('use ') ||
         lower.startsWith('اختر ')) {

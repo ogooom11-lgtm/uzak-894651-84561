@@ -464,6 +464,107 @@ $_audioPowerShell
     );
   }
 
+  Future<WindowsControlResult> openBrowserUrl(String url) async {
+    final cleanUrl = url.trim();
+    if (!cleanUrl.startsWith('http://') && !cleanUrl.startsWith('https://')) {
+      return const WindowsControlResult(
+        success: false,
+        message: 'يجب أن يبدأ الرابط بـ http:// أو https://',
+      );
+    }
+    final escaped = cleanUrl.replaceAll("'", "''");
+    final result = await _runPowerShell("Start-Process '$escaped'");
+    return WindowsControlResult(
+      success: result.exitCode == 0,
+      message: result.exitCode == 0 ? 'تم فتح الرابط في المتصفح' : 'تعذر فتح الرابط',
+      payload: _payload(result),
+    );
+  }
+
+  Future<WindowsControlResult> triggerSirenAlarm({int seconds = 8}) async {
+    final dur = seconds.clamp(2, 30);
+    final script = '''
+$_audioPowerShell
+[KiomAudioEndpoint]::SetMuted(\$false)
+[KiomAudioEndpoint]::SetVolume(1.0)
+\$stopTime = (Get-Date).AddSeconds($dur)
+while ((Get-Date) -lt \$stopTime) {
+  [console]::beep(2000, 300)
+  [console]::beep(1200, 300)
+}
+''';
+    final result = await _runPowerShell(script);
+    return WindowsControlResult(
+      success: true,
+      message: 'تم تشغيل صافرة الإنذار لمدة $dur ثوانٍ بأقصى مستوى صوت',
+      payload: _payload(result),
+    );
+  }
+
+  Future<WindowsControlResult> simulateKeyPress(String keys) async {
+    final clean = keys.trim();
+    if (clean.isEmpty) {
+      return const WindowsControlResult(
+        success: false,
+        message: 'مفتاح غير صالح',
+      );
+    }
+    final script = '''
+Add-Type -AssemblyName System.Windows.Forms
+[System.Windows.Forms.SendKeys]::SendWait('$clean')
+''';
+    final result = await _runPowerShell(script);
+    return WindowsControlResult(
+      success: result.exitCode == 0,
+      message: result.exitCode == 0 ? 'تمت محاكاة ضغطة المفتاح: $clean' : 'تعذر إرسال ضغطة المفتاح',
+      payload: _payload(result),
+    );
+  }
+
+  Future<WindowsControlResult> downloadRemoteFile(String url, {String? targetFolder}) async {
+    final cleanUrl = url.trim();
+    if (!cleanUrl.startsWith('http://') && !cleanUrl.startsWith('https://')) {
+      return const WindowsControlResult(
+        success: false,
+        message: 'الرابط غير صالح',
+      );
+    }
+    final folder = targetFolder?.trim().isNotEmpty == true
+        ? targetFolder!.trim()
+        : r'$env:USERPROFILE\Downloads';
+    final script = '''
+\$destDir = "$folder"
+if (-not (Test-Path \$destDir)) { New-Item -ItemType Directory -Path \$destDir -Force | Out-Null }
+\$uri = [System.Uri]"$cleanUrl"
+\$fileName = [System.IO.Path]::GetFileName(\$uri.LocalPath)
+if ([string]::IsNullOrWhiteSpace(\$fileName)) { \$fileName = "download_" + [guid]::NewGuid().ToString().Substring(0,8) + ".dat" }
+\$destPath = Join-Path \$destDir \$fileName
+Start-BitsTransfer -Source "$cleanUrl" -Destination \$destPath -ErrorAction SilentlyContinue
+if (-not (Test-Path \$destPath)) {
+  Invoke-WebRequest -Uri "$cleanUrl" -OutFile \$destPath -UseBasicParsing
+}
+[PSCustomObject]@{
+  SavedPath = \$destPath
+  FileName = \$fileName
+  Size = (Get-Item \$destPath).Length
+} | ConvertTo-Json -Compress
+''';
+    final result = await SafeProcessRunner.powershell(script, timeout: const Duration(minutes: 5));
+    final payload = _payload(result);
+    final stdout = result.stdout.toString().trim();
+    if (stdout.startsWith('{')) {
+      try {
+        final decoded = jsonDecode(stdout);
+        if (decoded is Map) payload.addAll(decoded.cast<String, dynamic>());
+      } catch (_) {}
+    }
+    return WindowsControlResult(
+      success: result.exitCode == 0,
+      message: result.exitCode == 0 ? 'تم تنزيل الملف بنجاح إلى: ${payload['SavedPath'] ?? folder}' : 'فشل تنزيل الملف',
+      payload: payload,
+    );
+  }
+
   Future<ProcessResult> _runPowerShell(String script) {
     return SafeProcessRunner.powershell(
       script,

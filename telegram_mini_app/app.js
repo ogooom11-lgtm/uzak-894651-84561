@@ -169,6 +169,26 @@ function handleSetClipboard() {
   }
 }
 
+function handleOpenRemoteUrl() {
+  const url = document.getElementById('inputOpenUrl').value.trim();
+  if (!url) {
+    showToast('⚠️ يرجى إدخال الرابط');
+    return;
+  }
+  sendPcCommand(`/open ${url}`);
+  document.getElementById('inputOpenUrl').value = '';
+}
+
+function handleRemoteDownload() {
+  const url = document.getElementById('inputDownloadUrl').value.trim();
+  if (!url) {
+    showToast('⚠️ يرجى إدخال رابط الملف');
+    return;
+  }
+  sendPcCommand(`/download ${url}`);
+  document.getElementById('inputDownloadUrl').value = '';
+}
+
 function handleBlockSite() {
   const site = document.getElementById('inputBlockSite').value.trim();
   if (!site) return;
