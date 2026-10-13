@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>KIOM - Telegram Mini App Dashboard</title>
+  <!-- Telegram Web App SDK -->
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <!-- Google Fonts: Cairo -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+  <!-- Styles -->
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="bg-base text-main">
+  <div id="app" class="app-container">
+    
+    <!-- Top Header -->
+    <header class="app-header">
+      <div class="header-content">
+        <div class="device-info">
+          <div class="status-indicator online" id="statusIndicator"></div>
+          <div>
+            <h1 class="device-title" id="headerDeviceName">كمبيوتر KIOM</h1>
+            <p class="device-subtitle" id="headerStatusText">متصل وسحابي • Telegram Cloud</p>
+          </div>
+        </div>
+        <div class="header-actions">
+          <button class="icon-btn" id="btnRefresh" title="تحديث البيانات">
+            🔄
+          </button>
+          <button class="icon-btn" id="btnSettings" title="الإعدادات">
+            ⚙️
+          </button>
+        </div>
+      </div>
+      
+      <!-- Quick Status Badges -->
+      <div class="quick-badges">
+        <div class="badge" id="badgeCpu">⚡ CPU: --%</div>
+        <div class="badge" id="badgeRam">🧠 RAM: --%</div>
+        <div class="badge" id="badgeBattery">🔋 100%</div>
+        <div class="badge badge-warning" id="badgeInstallGuard">🛡️ حظر التثبيت: نشط</div>
+      </div>
+    </header>
+
+    <!-- Main Content Area (Tab Views) -->
+    <main class="app-main">
+
+      <!-- TAB 1: Dashboard (الرئيسية) -->
+      <section id="tab-dashboard" class="tab-pane active">
+        <div class="section-title">📊 الحالة الفورية والتحكم السريع</div>
+        
+        <!-- Quick Action Cards Grid -->
+        <div class="grid grid-2">
+          <button class="action-card primary" onclick="sendPcCommand('/screenshot')">
+            <span class="card-icon">📸</span>
+            <span class="card-title">لقطة شاشة فورية</span>
+            <span class="card-desc">إرسال صورة الشاشة للمحادثة</span>
+          </button>
+
+          <button class="action-card danger" onclick="sendPcCommand('/emergency')">
+            <span class="card-icon">🚨</span>
+            <span class="card-title">طوارئ وقفل</span>
+            <span class="card-desc">كتم الصوت وقفل الجهاز</span>
+          </button>
+
+          <button class="action-card" onclick="sendPcCommand('/lock')">
+            <span class="card-icon">🔒</span>
+            <span class="card-title">قفل الشاشة</span>
+            <span class="card-desc">قفل Windows فوراً</span>
+          </button>
+
+          <button class="action-card" onclick="sendPcCommand('/status')">
+            <span class="card-icon">📈</span>
+            <span class="card-title">تقرير الصحة</span>
+            <span class="card-desc">المعالج، الرام، النوافذ</span>
+          </button>
+        </div>
+
+        <!-- Installation Guard Fast Controls -->
+        <div class="card mt-4">
+          <div class="card-header-row">
+            <span class="card-section-title">🛡️ حارس التثبيت الذكي (Install Guard)</span>
+            <span class="badge badge-success" id="installGuardStateLabel">مفعل</span>
+          </div>
+          <p class="text-muted text-sm">منع تشغيل أي ملفات تثبيت غير مصرح بها لحماية الجهاز من العبث.</p>
+          <div class="grid grid-3 mt-2">
+            <button class="btn btn-sm btn-outline-success" onclick="sendPcCommand('/allow_install 15')">🔓 سماح 15د</button>
+            <button class="btn btn-sm btn-outline-success" onclick="sendPcCommand('/allow_install 60')">⏳ سماح 60د</button>
+            <button class="btn btn-sm btn-danger" onclick="sendPcCommand('/block_install')">🚫 قفل التثبيت</button>
+          </div>
+        </div>
+
+        <!-- Quick Speech / Voice Alert -->
+        <div class="card mt-4">
+          <span class="card-section-title">🗣️ نطق رسالة صوتية على سماعات الكمبيوتر</span>
+          <div class="input-group mt-2">
+            <input type="text" id="inputSayText" placeholder="اكتب جملة ليتم نطقها بالصوت..." class="form-input">
+            <button class="btn btn-primary" onclick="handleSpeak()">نطق 📢</button>
+          </div>
+        </div>
+
+        <!-- Active Window & Specs -->
+        <div class="card mt-4">
+          <span class="card-section-title">🖥️ معلومات النظام والنافذة الحالية</span>
+          <div class="info-list mt-2">
+            <div class="info-row">
+              <span class="info-label">النافذة النشطة:</span>
+              <span class="info-value text-accent" id="valActiveWindow">جاري الفحص...</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">مدة التشغيل:</span>
+              <span class="info-value" id="valUptime">--</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">معرف الجهاز:</span>
+              <span class="info-value font-mono" id="valDeviceId">--</span>
+            </div>
+          </div>
+          <button class="btn btn-secondary w-100 mt-3" onclick="sendPcCommand('/specs')">📋 جلب المواصفات الكاملة للعتاد</button>
+        </div>
+      </section>
+
+      <!-- TAB 2: Control & Power (التحكم والطاقة) -->
+      <section id="tab-controls" class="tab-pane">
+        <div class="section-title">⚡ التحكم في الطاقة، الصوت والوسائط</div>
+
+        <!-- Audio Volume Control -->
+        <div class="card">
+          <span class="card-section-title">🔊 مستوى الصوت</span>
+          <div class="volume-slider-container mt-2">
+            <input type="range" id="sliderVolume" min="0" max="100" value="50" class="slider" onchange="handleVolumeChange(this.value)">
+            <span class="slider-val" id="valVolumePercent">50%</span>
+          </div>
+          <div class="grid grid-3 mt-2">
+            <button class="btn btn-secondary btn-sm" onclick="sendPcCommand('/mute')">🔇 كتم الصوت</button>
+            <button class="btn btn-secondary btn-sm" onclick="sendPcCommand('/vol 30')">🔉 صوت 30%</button>
+            <button class="btn btn-secondary btn-sm" onclick="sendPcCommand('/vol 80')">🔊 صوت 80%</button>
+          </div>
+        </div>
+
+        <!-- Power Management -->
+        <div class="card mt-4">
+          <span class="card-section-title">🔌 خيارات الطاقة وإيقاف التشغيل</span>
+          <div class="grid grid-2 mt-2">
+            <button class="btn btn-warning" onclick="sendPcCommand('/lock 15')">⏳ قفل مؤقت (15د)</button>
+            <button class="btn btn-warning" onclick="sendPcCommand('/lock 60')">⏳ قفل مؤقت (ساعة)</button>
+            <button class="btn btn-secondary" onclick="sendPcCommand('/sleep')">💤 وضع السكون (Sleep)</button>
+            <button class="btn btn-secondary" onclick="sendPcCommand('/restart')">🔄 إعادة التشغيل</button>
+            <button class="btn btn-danger" onclick="sendPcCommand('/shutdown')">🛑 إيقاف التشغيل</button>
+            <button class="btn btn-outline" onclick="sendPcCommand('/cancel_shutdown')">↩️ إلغاء الإيقاف</button>
+          </div>
+        </div>
+
+        <!-- Windows Toast Notification -->
+        <div class="card mt-4">
+          <span class="card-section-title">🔔 إرسال إشعار Toast منبثق لشاشة الويندوز</span>
+          <div class="mt-2">
+            <input type="text" id="toastTitle" placeholder="عنوان الإشعار (مثال: تنبيه عاجل)" class="form-input mb-2">
+            <input type="text" id="toastMsg" placeholder="نص الرسالة..." class="form-input mb-2">
+            <button class="btn btn-primary w-100" onclick="handleSendToast()">إظهار الإشعار على الشاشة 💬</button>
+          </div>
+        </div>
+
+        <!-- Clipboard Manager -->
+        <div class="card mt-4">
+          <span class="card-section-title">📋 حافظة النصوص (Clipboard)</span>
+          <div class="grid grid-2 mt-2">
+            <button class="btn btn-secondary" onclick="sendPcCommand('/clip')">📥 قراءة الحافظة</button>
+            <button class="btn btn-secondary" onclick="handleSetClipboard()">📤 نسخ نص للحافظة</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 3: Security & Restrictions (الأمان والممنوعات) -->
+      <section id="tab-security" class="tab-pane">
+        <div class="section-title">🛡️ إدارة الحظر، المواقع والبرامج الممنوعة</div>
+
+        <!-- Website Blocker Management -->
+        <div class="card">
+          <span class="card-section-title">🌐 حظر المواقع الإلكترونية (مثل YouTube / TikTok)</span>
+          <p class="text-muted text-sm mt-1">يتم حظر الموقع نهائياً في ملف Hosts والمتصفحات.</p>
+          <div class="input-group mt-2">
+            <input type="text" id="inputBlockSite" placeholder="اسم الدومين (مثال: youtube.com)" class="form-input">
+            <button class="btn btn-danger" onclick="handleBlockSite()">🚫 حظر</button>
+          </div>
+          <div class="quick-chips mt-2">
+            <button class="chip" onclick="handleQuickBlockSite('youtube.com')">+ youtube.com</button>
+            <button class="chip" onclick="handleQuickBlockSite('tiktok.com')">+ tiktok.com</button>
+            <button class="chip" onclick="handleQuickBlockSite('facebook.com')">+ facebook.com</button>
+            <button class="chip" onclick="handleQuickBlockSite('instagram.com')">+ instagram.com</button>
+            <button class="chip" onclick="handleQuickBlockSite('roblox.com')">+ roblox.com</button>
+          </div>
+          <div class="mt-3">
+            <button class="btn btn-outline w-100" onclick="sendPcCommand('/blocked')">📋 عرض قائمة المواقع المحظورة حالياً</button>
+          </div>
+        </div>
+
+        <!-- App Blocker Management -->
+        <div class="card mt-4">
+          <span class="card-section-title">🚫 حظر تطبيقات وألعاب محددة</span>
+          <p class="text-muted text-sm mt-1">إغلاق التطبيق فور محاولة فتحه.</p>
+          <div class="input-group mt-2">
+            <input type="text" id="inputBlockApp" placeholder="اسم التطبيق أو العملية (مثال: chrome.exe)" class="form-input">
+            <button class="btn btn-danger" onclick="handleBlockApp()">🚫 حظر التطبيق</button>
+          </div>
+          <div class="quick-chips mt-2">
+            <button class="chip" onclick="handleQuickBlockApp('chrome.exe')">+ Chrome</button>
+            <button class="chip" onclick="handleQuickBlockApp('discord.exe')">+ Discord</button>
+            <button class="chip" onclick="handleQuickBlockApp('telegram.exe')">+ Telegram</button>
+            <button class="chip" onclick="handleQuickBlockApp('robloxplayerbeta.exe')">+ Roblox</button>
+          </div>
+        </div>
+
+        <!-- Permissions & Path Guard -->
+        <div class="card mt-4">
+          <span class="card-section-title">⚡ الصلاحيات وقواعد الحماية الشاملة</span>
+          <div class="grid grid-2 mt-2">
+            <button class="btn btn-success" onclick="sendPcCommand('/allow_all_permissions')">⚡ تفعيل كافة الأذونات</button>
+            <button class="btn btn-secondary" onclick="sendPcCommand('/pathrules')">🛡️ قواعد حماية المجلدات</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 4: File Explorer (مدير الملفات) -->
+      <section id="tab-files" class="tab-pane">
+        <div class="section-title">📁 استعراض الملفات وتنزيلها عبر Telegram</div>
+
+        <div class="card">
+          <span class="card-section-title">📂 المجلدات الرئيسية السريعة</span>
+          <div class="grid grid-2 mt-2">
+            <button class="btn btn-secondary" onclick="sendPcCommand('/browse downloads')">📥 التنزيلات (Downloads)</button>
+            <button class="btn btn-secondary" onclick="sendPcCommand('/browse desktop')">🖥️ سطح المكتب (Desktop)</button>
+            <button class="btn btn-secondary" onclick="sendPcCommand('/browse documents')">📑 المستندات (Documents)</button>
+            <button class="btn btn-secondary" onclick="sendPcCommand('/browse c:')">💾 القرص (C:\)</button>
+            <button class="btn btn-secondary" onclick="sendPcCommand('/browse d:')">💾 القرص (D:\)</button>
+            <button class="btn btn-secondary" onclick="sendPcCommand('/browse roots')">💽 جميع الأقراص</button>
+          </div>
+        </div>
+
+        <div class="card mt-4">
+          <span class="card-section-title">🔍 استعراض مسار مخصص بالكمبيوتر</span>
+          <div class="input-group mt-2">
+            <input type="text" id="inputBrowsePath" placeholder="C:\Users\Admin\Documents" class="form-input font-mono">
+            <button class="btn btn-primary" onclick="handleBrowseCustomPath()">استعراض 📂</button>
+          </div>
+        </div>
+
+        <div class="card mt-4">
+          <span class="card-section-title">📥 سحب وتحميل ملف أو مجلد كملف مضغوط</span>
+          <p class="text-muted text-sm mt-1">يتم ضغط المجلد تلقائياً بصيغة Zip وتقسيمها إذا زاد الحجم عن حد الإرسال.</p>
+          <div class="input-group mt-2">
+            <input type="text" id="inputFetchPath" placeholder="المسار الكامل للملف أو المجلد..." class="form-input font-mono">
+            <button class="btn btn-success" onclick="handleFetchFile()">تحميل للمحادثة 📦</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 5: Terminal / PowerShell (الطرفية الذكية) -->
+      <section id="tab-terminal" class="tab-pane">
+        <div class="section-title">💻 تنفيذ أوامر PowerShell & CMD المباشرة</div>
+
+        <div class="card">
+          <div class="terminal-type-selector">
+            <label><input type="radio" name="termType" value="ps" checked> PowerShell ⚡</label>
+            <label><input type="radio" name="termType" value="cmd"> Command Prompt (CMD) 📟</label>
+          </div>
+          
+          <div class="input-group mt-2">
+            <input type="text" id="inputTerminalCmd" placeholder="اكتب الأمر هنا (مثال: Get-Process | select -first 5)" class="form-input font-mono">
+            <button class="btn btn-primary" onclick="handleRunCommand()">تنفيذ 🚀</button>
+          </div>
+
+          <div class="quick-chips mt-2">
+            <button class="chip font-mono" onclick="setTerminalCmd('ipconfig /all')">ipconfig</button>
+            <button class="chip font-mono" onclick="setTerminalCmd('Get-Service | Where-Object Status -eq Running')">Services</button>
+            <button class="chip font-mono" onclick="setTerminalCmd('Get-Process | Sort-Object CPU -Descending | Select-Object -First 10')">Top CPU</button>
+            <button class="chip font-mono" onclick="setTerminalCmd('tasklist')">tasklist</button>
+            <button class="chip font-mono" onclick="setTerminalCmd('whoami /all')">whoami</button>
+          </div>
+        </div>
+
+        <!-- Terminal Output Screen -->
+        <div class="terminal-screen mt-4" id="terminalScreen">
+          <div class="terminal-header">
+            <span class="terminal-dot red"></span>
+            <span class="terminal-dot yellow"></span>
+            <span class="terminal-dot green"></span>
+            <span class="terminal-title">KIOM Remote PowerShell Console</span>
+          </div>
+          <pre class="terminal-body" id="terminalOutput">جاهز لتنفيذ الأوامر... النتائج ستظهر في محادثة التيليجرام وفور انتهاء المعالجة.</pre>
+        </div>
+      </section>
+
+      <!-- TAB 6: Settings (الإعدادات) -->
+      <section id="tab-settings" class="tab-pane">
+        <div class="section-title">⚙️ إعدادات الربط مع سحابة Telegram</div>
+
+        <div class="card">
+          <span class="card-section-title">🤖 بيانات بوت التحكم السحابي</span>
+          
+          <div class="form-group mt-3">
+            <label class="form-label">معرف المحادثة (Chat ID):</label>
+            <input type="text" id="cfgChatId" placeholder="مثال: 123456789 أو -100123456789" class="form-input font-mono">
+          </div>
+
+          <div class="form-group mt-3">
+            <label class="form-label">رمز توكن البوت (Bot Token):</label>
+            <input type="password" id="cfgBotToken" placeholder="1234567890:ABCdefGHIjklMNO..." class="form-input font-mono">
+            <small class="text-muted">يُستخدم لتوجيه الأوامر المباشرة لجهاز الكمبيوتر فوراً.</small>
+          </div>
+
+          <div class="form-group mt-3">
+            <label class="form-label">عنوان جهاز الكمبيوتر (Device Name):</label>
+            <input type="text" id="cfgDeviceName" placeholder="My-Windows-PC" class="form-input">
+          </div>
+
+          <button class="btn btn-primary w-100 mt-4" onclick="saveSettings()">💾 حفظ الإعدادات</button>
+        </div>
+
+        <div class="card mt-4">
+          <span class="card-section-title">ℹ️ معلومات التطبيق المصغر (Telegram Mini App)</span>
+          <p class="text-muted text-sm mt-2">
+            يعمل هذا التطبيق مباشرة داخل Telegram عبر Webview متوافق تماماً مع iOS و Android و Telegram Desktop و Web.
+          </p>
+          <div class="mt-3">
+            <button class="btn btn-outline w-100" onclick="Telegram.WebApp.close()">إغلاق التطبيق المصغر ✖️</button>
+          </div>
+        </div>
+      </section>
+
+    </main>
+
+    <!-- Bottom Navigation Bar -->
+    <nav class="bottom-nav">
+      <button class="nav-item active" data-tab="tab-dashboard" onclick="switchTab('tab-dashboard')">
+        <span class="nav-icon">🏠</span>
+        <span class="nav-label">الرئيسية</span>
+      </button>
+
+      <button class="nav-item" data-tab="tab-controls" onclick="switchTab('tab-controls')">
+        <span class="nav-icon">⚡</span>
+        <span class="nav-label">التحكم</span>
+      </button>
+
+      <button class="nav-item" data-tab="tab-security" onclick="switchTab('tab-security')">
+        <span class="nav-icon">🛡️</span>
+        <span class="nav-label">الأمان</span>
+      </button>
+
+      <button class="nav-item" data-tab="tab-files" onclick="switchTab('tab-files')">
+        <span class="nav-icon">📁</span>
+        <span class="nav-label">الملفات</span>
+      </button>
+
+      <button class="nav-item" data-tab="tab-terminal" onclick="switchTab('tab-terminal')">
+        <span class="nav-icon">💻</span>
+        <span class="nav-label">الطرفية</span>
+      </button>
+    </nav>
+
+    <!-- Toast Notification Overlay -->
+    <div id="appToast" class="app-toast"></div>
+
+  </div>
+
+  <!-- Main JavaScript Logic -->
+  <script src="app.js"></script>
+</body>
+</html>

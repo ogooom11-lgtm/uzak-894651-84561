@@ -271,6 +271,42 @@ class TelegramNotifierService {
     }
   }
 
+  Future<bool> setChatMenuButton({
+    String? chatId,
+    String? webAppUrl,
+    String buttonText = '📱 فتح التطبيق',
+  }) async {
+    if (!hasBotToken) return false;
+    try {
+      final Map<String, dynamic> body = {};
+      if (chatId != null && chatId.isNotEmpty) {
+        body['chat_id'] = chatId;
+      }
+
+      if (webAppUrl != null && webAppUrl.isNotEmpty) {
+        body['menu_button'] = {
+          'type': 'web_app',
+          'text': buttonText,
+          'web_app': {'url': webAppUrl},
+        };
+      } else {
+        body['menu_button'] = {'type': 'default'};
+      }
+
+      final response = await client
+          .post(
+            Uri.parse(_api('setChatMenuButton')),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode(body),
+          )
+          .timeout(_httpTimeout);
+      return response.statusCode >= 200 && response.statusCode < 300;
+    } catch (e) {
+      await store.appendLog('telegram_set_chat_menu_button_exception', e.toString());
+      return false;
+    }
+  }
+
   Future<bool> answerCallbackQuery(
     String callbackQueryId, {
     String text = '',

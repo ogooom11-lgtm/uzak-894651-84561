@@ -892,6 +892,72 @@ class TelegramCommandService {
       return true;
     }
 
+    if (lower.startsWith('/setwebapp ') || lower.startsWith('/set_webapp ')) {
+      final url = text.substring(text.indexOf(' ') + 1).trim();
+      if (url.startsWith('https://')) {
+        await store.set('telegramWebAppUrl', url);
+        unawaited(telegram.setChatMenuButton(webAppUrl: url, chatId: chatId));
+        await telegram.sendMessage(
+          '📱 <b>تم تفعيل وتعيين رابط التطبيق المصغر (Mini App) بنجاح!</b>\n\n'
+          '🔗 <b>الرابط:</b> <code>$url</code>\n'
+          '✅ تم أيضاً ضبط زر القائمة (Menu Button) في تيليجرام لفتح التطبيق بضغطة واحدة.',
+          chatId: chatId,
+          replyToMessageId: replyToMessageId,
+          replyMarkup: {
+            'inline_keyboard': [
+              [
+                {'text': '🚀 فتح التطبيق المصغر الآن', 'web_app': {'url': url}},
+              ],
+            ],
+          },
+        );
+      } else {
+        await telegram.sendMessage(
+          '⚠️ <b>تنبيه:</b> يجب أن يبدأ رابط الـ Mini App بـ <code>https://</code> حصراً وفقاً لشروط Telegram Web Apps.\n\n'
+          'مثال:\n<code>/setwebapp https://your-domain.github.io/uzak-894651-84561/telegram_mini_app/</code>',
+          chatId: chatId,
+          replyToMessageId: replyToMessageId,
+        );
+      }
+      return true;
+    }
+
+    if (lower == '/webapp' ||
+        lower == '/miniapp' ||
+        lower == 'webapp' ||
+        lower == 'miniapp' ||
+        lower == 'تطبيق' ||
+        lower == 'التطبيق') {
+      final webAppUrl = (store.get<String>('telegramWebAppUrl') ?? '').trim();
+      if (webAppUrl.isNotEmpty) {
+        await telegram.sendMessage(
+          '📱 <b>تطبيق لوحة تحكم KIOM المصغر (Telegram Mini App):</b>\n\n'
+          'اضغط على الزر أدناه لفتح لوحة التحكم التفاعلية مباشرة داخل تيليجرام 👇',
+          chatId: chatId,
+          replyToMessageId: replyToMessageId,
+          replyMarkup: {
+            'inline_keyboard': [
+              [
+                {'text': '🚀 فتح لوحة التحكم التفاعلية (Mini App)', 'web_app': {'url': webAppUrl}},
+              ],
+            ],
+          },
+        );
+      } else {
+        await telegram.sendMessage(
+          '📱 <b>ميزة التطبيق المصغر (Telegram Mini App):</b>\n\n'
+          'تتيح لك فتح لوحة تحكم رسومية كاملة داخل تيليجرام دون الحاجة لتثبيت تطبيقات خارجية!\n\n'
+          '📌 <b>لربط التطبيق المصغر:</b>\n'
+          '1. ارفع مجلد <code>telegram_mini_app</code> إلى أي استضافة مجانية تدعم HTTPS مثل (GitHub Pages / Vercel / Cloudflare).\n'
+          '2. أرسل الأمر:\n'
+          '<code>/setwebapp https://your-url.com</code>\n\n'
+          '✨ يمكنك أيضاً ضبطه عبر @BotFather باستخدام الأمر <code>/newapp</code> أو <code>/setmenubutton</code>.',
+          chatId: chatId,
+          replyToMessageId: replyToMessageId,
+        );
+      }
+      return true;
+    }
     if (lower.startsWith('/allow_install') ||
         lower.startsWith('/allowinstall') ||
         lower.startsWith('allow install') ||
@@ -1614,34 +1680,48 @@ class TelegramCommandService {
           'callback_data': data,
         };
 
-    return {
-      'inline_keyboard': [
-        [
-          button('📸 لقطة شاشة', 'screenshot'),
-          button('📊 صحة الجهاز', 'health'),
-          button('🖥️ مواصفات الجهاز', 'specs'),
-        ],
-        [
-          button('📁 مدير الملفات', 'menu_files'),
-          button('👁️ البرامج والتطبيقات', 'menu_apps'),
-          button('🔒 قفل وطاقة', 'menu_power'),
-        ],
-        [
-          button('🎛️ الأوضاع الذكية', 'menu_modes'),
-          button('🌐 الشبكة والبلوتوث', 'menu_network'),
-          button('🔊 التحكم بالصوت', 'menu_audio'),
-        ],
-        [
-          button('📋 الحافظة', 'clip'),
-          button('📈 السجلات والتحليلات', 'menu_insights'),
-          button('🛡️ الأمان والحماية', 'menu_security'),
-        ],
-        [
-          button('⚡ وضع الطوارئ', 'emergency'),
-          button('↩️ تراجع عن أمر', 'undo'),
-          button('📖 دليل الأوامر', 'menu_help'),
-        ],
+    final webAppUrl = (store.get<String>('telegramWebAppUrl') ?? '').trim();
+    final List<List<Map<String, dynamic>>> rows = [];
+
+    if (webAppUrl.isNotEmpty) {
+      rows.add([
+        {
+          'text': '📱 فتح لوحة التحكم التفاعلية (Mini App)',
+          'web_app': {'url': webAppUrl},
+        },
+      ]);
+    }
+
+    rows.addAll([
+      [
+        button('📸 لقطة شاشة', 'screenshot'),
+        button('📊 صحة الجهاز', 'health'),
+        button('🖥️ مواصفات الجهاز', 'specs'),
       ],
+      [
+        button('📁 مدير الملفات', 'menu_files'),
+        button('👁️ البرامج والتطبيقات', 'menu_apps'),
+        button('🔒 قفل وطاقة', 'menu_power'),
+      ],
+      [
+        button('🎛️ الأوضاع الذكية', 'menu_modes'),
+        button('🌐 الشبكة والبلوتوث', 'menu_network'),
+        button('🔊 التحكم بالصوت', 'menu_audio'),
+      ],
+      [
+        button('📋 الحافظة', 'clip'),
+        button('📈 السجلات والتحليلات', 'menu_insights'),
+        button('🛡️ الأمان والحماية', 'menu_security'),
+      ],
+      [
+        button('⚡ وضع الطوارئ', 'emergency'),
+        button('↩️ تراجع عن أمر', 'undo'),
+        button('📖 دليل الأوامر', 'menu_help'),
+      ],
+    ]);
+
+    return {
+      'inline_keyboard': rows,
     };
   }
 
