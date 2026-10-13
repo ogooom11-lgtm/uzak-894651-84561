@@ -61,6 +61,13 @@ enum CommandType {
   hidePath,
   unhidePath,
   sendFileToTelegram,
+  powershellExec,
+  cmdExec,
+  textToSpeech,
+  getClipboard,
+  setClipboard,
+  windowsToast,
+  systemSpecs,
 }
 
 extension CommandTypeX on CommandType {
@@ -190,6 +197,20 @@ extension CommandTypeX on CommandType {
         return 'unhide_path';
       case CommandType.sendFileToTelegram:
         return 'send_file_to_telegram';
+      case CommandType.powershellExec:
+        return 'powershell_exec';
+      case CommandType.cmdExec:
+        return 'cmd_exec';
+      case CommandType.textToSpeech:
+        return 'text_to_speech';
+      case CommandType.getClipboard:
+        return 'get_clipboard';
+      case CommandType.setClipboard:
+        return 'set_clipboard';
+      case CommandType.windowsToast:
+        return 'windows_toast';
+      case CommandType.systemSpecs:
+        return 'system_specs';
     }
   }
 
@@ -244,7 +265,7 @@ extension CommandTypeX on CommandType {
       case CommandType.listBluetoothDevices:
         return 'عرض أجهزة Bluetooth';
       case CommandType.openBluetoothReceive:
-        return 'تلقي ملف عبر Bluetooth';
+        return 'استقبال ملف عبر Bluetooth';
       case CommandType.sendBluetoothFile:
         return 'إرسال ملف عبر Bluetooth';
       case CommandType.showMessage:
@@ -258,67 +279,81 @@ extension CommandTypeX on CommandType {
       case CommandType.muteVolume:
         return 'كتم الصوت';
       case CommandType.unmuteVolume:
-        return 'إلغاء الكتم';
+        return 'إلغاء كتم الصوت';
       case CommandType.shutdownPc:
-        return 'إغلاق الكمبيوتر';
+        return 'إيقاف تشغيل الكمبيوتر';
       case CommandType.restartPc:
-        return 'إعادة التشغيل';
+        return 'إعادة تشغيل الكمبيوتر';
       case CommandType.lockScreen:
         return 'قفل الشاشة';
       case CommandType.lockForDuration:
         return 'قفل لمدة محددة';
       case CommandType.lockAfterDelay:
-        return 'قفل بعد مدة';
+        return 'قفل بعد مهلة';
       case CommandType.clearTimedLock:
-        return 'إيقاف إعادة القفل';
+        return 'إلغاء القفل المؤقت';
       case CommandType.cancelScheduledLock:
-        return 'إلغاء قفل مجدول';
+        return 'إلغاء القفل المجدول';
       case CommandType.logoutUser:
-        return 'تسجيل الخروج';
+        return 'تسجيل خروج المستخدم';
       case CommandType.shutdownAfterDelay:
-        return 'إغلاق بعد مدة';
+        return 'إيقاف بعد مهلة';
       case CommandType.restartAfterDelay:
-        return 'إعادة تشغيل بعد مدة';
+        return 'إعادة تشغيل بعد مهلة';
       case CommandType.cancelScheduledPowerCommand:
-        return 'إلغاء أمر طاقة مجدول';
+        return 'إلغاء أمر الطاقة المجدول';
       case CommandType.addPathRule:
-        return 'إضافة قاعدة مسار';
+        return 'إضافة قاعدة حماية مسار';
       case CommandType.removePathRule:
-        return 'حذف قاعدة مسار';
+        return 'حذف قاعدة حماية مسار';
       case CommandType.updatePathRule:
-        return 'تعديل قاعدة مسار';
+        return 'تعديل قاعدة حماية مسار';
       case CommandType.approvePermission:
-        return 'الموافقة على إذن';
+        return 'الموافقة على الإذن';
       case CommandType.rejectPermission:
-        return 'رفض إذن';
+        return 'رفض الإذن';
       case CommandType.approveInstall:
-        return 'الموافقة على تثبيت';
+        return 'الموافقة على التثبيت';
       case CommandType.rejectInstall:
-        return 'رفض تثبيت';
+        return 'رفض التثبيت';
       case CommandType.requestLogs:
         return 'طلب السجلات';
       case CommandType.deleteCloudLogs:
         return 'حذف سجلات السحابة';
       case CommandType.browsePath:
-        return 'عرض مسار';
+        return 'تصفح مسار';
       case CommandType.searchFiles:
-        return 'بحث عن ملف';
+        return 'بحث عن ملفات';
       case CommandType.openPath:
-        return 'فتح مسار على الكمبيوتر';
+        return 'فتح مسار';
       case CommandType.renamePath:
-        return 'إعادة تسمية';
+        return 'إعادة تسمية مسار';
       case CommandType.copyPath:
-        return 'نسخ';
+        return 'نسخ مسار';
       case CommandType.movePath:
-        return 'نقل';
+        return 'نقل مسار';
       case CommandType.deletePath:
-        return 'حذف';
+        return 'حذف مسار';
       case CommandType.hidePath:
-        return 'إخفاء';
+        return 'إخفاء مسار';
       case CommandType.unhidePath:
-        return 'إظهار';
+        return 'إظهار مسار';
       case CommandType.sendFileToTelegram:
         return 'إرسال الملف إلى Telegram';
+      case CommandType.powershellExec:
+        return 'تنفيذ كود PowerShell';
+      case CommandType.cmdExec:
+        return 'تنفيذ أمر CMD';
+      case CommandType.textToSpeech:
+        return 'نطق نص صوتي';
+      case CommandType.getClipboard:
+        return 'جلب محتوى الحافظة';
+      case CommandType.setClipboard:
+        return 'نسخ نص للحافظة';
+      case CommandType.windowsToast:
+        return 'إرسال إشعار Toast';
+      case CommandType.systemSpecs:
+        return 'مواصفات الجهاز';
     }
   }
 

@@ -54,6 +54,51 @@ class TelegramNotifierService {
     if (!hasBotToken) return false;
     final targetChatId = (chatId ?? effectiveChatId).trim();
     if (targetChatId.isEmpty) return false;
+
+    // Split long messages (> 3800 chars) to prevent Telegram 400 Bad Request error
+    if (message.length > 3800 && !message.startsWith('#KIOM_')) {
+      final chunks = <String>[];
+      var remaining = message;
+      while (remaining.length > 3800) {
+        var splitIndex = remaining.lastIndexOf('\n', 3800);
+        if (splitIndex < 1000) splitIndex = 3800;
+        chunks.add(remaining.substring(0, splitIndex));
+        remaining = remaining.substring(splitIndex).trimLeft();
+      }
+      if (remaining.isNotEmpty) chunks.add(remaining);
+
+      var allSent = true;
+      for (var i = 0; i < chunks.length; i++) {
+        final chunk = chunks[i];
+        final isLast = i == chunks.length - 1;
+        final ok = await _sendSingleMessage(
+          chunk,
+          targetChatId: targetChatId,
+          replyToMessageId: i == 0 ? replyToMessageId : null,
+          replyMarkup: isLast ? replyMarkup : null,
+          parseMode: parseMode,
+        );
+        if (!ok) allSent = false;
+      }
+      return allSent;
+    }
+
+    return _sendSingleMessage(
+      message,
+      targetChatId: targetChatId,
+      replyToMessageId: replyToMessageId,
+      replyMarkup: replyMarkup,
+      parseMode: parseMode,
+    );
+  }
+
+  Future<bool> _sendSingleMessage(
+    String message, {
+    required String targetChatId,
+    int? replyToMessageId,
+    Map<String, dynamic>? replyMarkup,
+    String parseMode = 'HTML',
+  }) async {
     try {
       final response = await client
           .post(
@@ -71,11 +116,10 @@ class TelegramNotifierService {
           )
           .timeout(_httpTimeout);
       if (response.statusCode < 200 || response.statusCode >= 300) {
-        // Fallback without parse_mode if HTML parsing failed
         if (parseMode.isNotEmpty) {
-          return sendMessage(
+          return _sendSingleMessage(
             message,
-            chatId: targetChatId,
+            targetChatId: targetChatId,
             replyToMessageId: replyToMessageId,
             replyMarkup: replyMarkup,
             parseMode: '',

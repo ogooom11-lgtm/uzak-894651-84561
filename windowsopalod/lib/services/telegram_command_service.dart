@@ -968,6 +968,33 @@ class TelegramCommandService {
     if (lower == 'undo' || lower == 'تراجع' || lower == 'الغاء اخر امر') {
       return const _ParsedTelegramCommand('undo_last_command');
     }
+    if (lower == 'specs' || lower == 'sysinfo' || lower == 'مواصفات' || lower == 'معلومات الجهاز') {
+      return const _ParsedTelegramCommand('system_specs');
+    }
+    if (lower == 'clip' || lower == 'clipboard' || lower == 'الحافظة') {
+      return const _ParsedTelegramCommand('get_clipboard');
+    }
+    if (lower.startsWith('copy ') || lower.startsWith('نسخ ') || lower.startsWith('انسخ ')) {
+      final textToCopy = lower.startsWith('copy ')
+          ? normalized.substring(5).trim()
+          : (lower.startsWith('نسخ ') ? normalized.substring(4).trim() : normalized.substring(5).trim());
+      return _ParsedTelegramCommand('set_clipboard', {'text': textToCopy});
+    }
+    if (first == 'say' || first == 'speak' || first == 'تحدث' || first == 'انطق' || first == 'قل') {
+      return _ParsedTelegramCommand('text_to_speech', {'text': rest});
+    }
+    if (first == 'ps' || first == 'powershell') {
+      return _ParsedTelegramCommand('powershell_exec', {'script': rest});
+    }
+    if (first == 'cmd') {
+      return _ParsedTelegramCommand('cmd_exec', {'command': rest});
+    }
+    if (lower.startsWith('toast ') || lower.startsWith('alert ') || lower.startsWith('تنبيه ')) {
+      final msg = lower.startsWith('toast ')
+          ? normalized.substring(6).trim()
+          : (lower.startsWith('alert ') ? normalized.substring(6).trim() : normalized.substring(6).trim());
+      return _ParsedTelegramCommand('windows_toast', {'title': 'KIOM Remote Alert', 'message': msg});
+    }
     if (lower == 'allow all' ||
         lower == 'allow_all' ||
         lower == 'allow_all_permissions' ||
@@ -1371,6 +1398,10 @@ class TelegramCommandService {
     switch (data) {
       case 'status':
         return 'status';
+      case 'specs':
+        return 'specs';
+      case 'clip':
+        return 'clip';
       case 'screenshot':
         return 'screenshot';
       case 'health':
@@ -1505,7 +1536,7 @@ class TelegramCommandService {
         [
           button('📸 لقطة شاشة', 'screenshot'),
           button('📊 صحة الجهاز', 'health'),
-          button('⚡ وضع الطوارئ', 'emergency'),
+          button('🖥️ مواصفات الجهاز', 'specs'),
         ],
         [
           button('📁 مدير الملفات', 'menu_files'),
@@ -1518,13 +1549,13 @@ class TelegramCommandService {
           button('🔊 التحكم بالصوت', 'menu_audio'),
         ],
         [
-          button('💬 إرسال رسالة', 'menu_messages'),
+          button('📋 الحافظة', 'clip'),
           button('📈 السجلات والتحليلات', 'menu_insights'),
           button('🛡️ الأمان والحماية', 'menu_security'),
         ],
         [
+          button('⚡ وضع الطوارئ', 'emergency'),
           button('↩️ تراجع عن أمر', 'undo'),
-          button('🔑 رمز QR', 'qr'),
           button('📖 دليل الأوامر', 'menu_help'),
         ],
       ],

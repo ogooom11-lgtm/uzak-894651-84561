@@ -895,6 +895,125 @@ class CommandExecutorService {
             await store.appendLog('file_sent_to_telegram', message, responsePayload);
             break;
 
+          case 'powershell_exec':
+          case 'powershell':
+          case 'ps':
+            final script = (command.payload['script'] ?? command.payload['command'] ?? '').toString().trim();
+            if (script.isEmpty) throw StateError('script مطلوب لتنفيذ PowerShell');
+            final psRes = await Process.run('powershell', ['-NoProfile', '-Command', script]).timeout(const Duration(seconds: 45));
+            final psOut = psRes.stdout.toString().trim();
+            final psErr = psRes.stderr.toString().trim();
+            final output = psOut.isNotEmpty ? psOut : (psErr.isNotEmpty ? psErr : '(تم التنفيذ بنجاح بدون مخرجات)');
+            success = psRes.exitCode == 0;
+            message = success ? 'تم تنفيذ كود PowerShell بنجاح' : 'خطأ أثناء تنفيذ PowerShell: $psErr';
+            responsePayload = {
+              'script': script,
+              'exitCode': psRes.exitCode,
+              'output': output,
+              'stdout': psOut,
+              'stderr': psErr,
+            };
+            await store.appendLog('powershell_executed', message, responsePayload);
+            break;
+
+          case 'cmd_exec':
+          case 'cmd':
+            final cmd = (command.payload['command'] ?? command.payload['script'] ?? '').toString().trim();
+            if (cmd.isEmpty) throw StateError('command مطلوب لتنفيذ CMD');
+            final cmdRes = await Process.run('cmd', ['/c', cmd]).timeout(const Duration(seconds: 45));
+            final cmdOut = cmdRes.stdout.toString().trim();
+            final cmdErr = cmdRes.stderr.toString().trim();
+            final output = cmdOut.isNotEmpty ? cmdOut : (cmdErr.isNotEmpty ? cmdErr : '(تم التنفيذ بنجاح بدون مخرجات)');
+            success = cmdRes.exitCode == 0;
+            message = success ? 'تم تنفيذ أمر CMD بنجاح' : 'خطأ أثناء تنفيذ CMD: $cmdErr';
+            responsePayload = {
+              'command': cmd,
+              'exitCode': cmdRes.exitCode,
+              'output': output,
+              'stdout': cmdOut,
+              'stderr': cmdErr,
+            };
+            await store.appendLog('cmd_executed', message, responsePayload);
+            break;
+
+          case 'text_to_speech':
+          case 'say':
+          case 'speak':
+            final text = (command.payload['text'] ?? command.payload['message'] ?? '').toString().trim();
+            if (text.isEmpty) throw StateError('text مطلوب للنطق الصوتي');
+            final ps = 'Add-Type -AssemblyName System.Speech; \$s = New-Object System.Speech.Synthesis.SpeechSynthesizer; \$s.Speak("$text");';
+            unawaited(Process.run('powershell', ['-NoProfile', '-Command', ps]));
+            success = true;
+            message = 'تم نطق النص على مكبر صوت الكمبيوتر: "$text"';
+            responsePayload = {'text': text};
+            await store.appendLog('tts_spoken', message, responsePayload);
+            break;
+
+          case 'get_clipboard':
+            final clipRes = await Process.run('powershell', ['-NoProfile', '-Command', 'Get-Clipboard -Raw']);
+            final clipText = clipRes.stdout.toString().trim();
+            success = true;
+            message = clipText.isNotEmpty ? 'محتوى الحافظة: $clipText' : 'الحافظة فارغة';
+            responsePayload = {'clipboard': clipText};
+            break;
+
+          case 'set_clipboard':
+            final clipText = (command.payload['text'] ?? '').toString();
+            await Process.run('powershell', ['-NoProfile', '-Command', 'Set-Clipboard -Value "$clipText"']);
+            success = true;
+            message = 'تم نسخ النص إلى حافظة الكمبيوتر بنجاح';
+            responsePayload = {'clipboard': clipText};
+            break;
+
+          case 'windows_toast':
+            final title = (command.payload['title'] ?? 'KIOM Alert').toString();
+            final msg = (command.payload['message'] ?? command.payload['text'] ?? '').toString();
+            final psToast = [
+              '[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] > \$null',
+              '\$t = [Windows.UI.Notifications.ToastNotificationManager]::GetTemplateContent([Windows.UI.Notifications.ToastTemplateType]::ToastText02)',
+              '\$x = [xml]\$t.GetXml()',
+              '\$x.GetElementsByTagName("text")[0].AppendChild(\$x.CreateTextNode("$title")) > \$null',
+              '\$x.GetElementsByTagName("text")[1].AppendChild(\$x.CreateTextNode("$msg")) > \$null',
+              '\$xml = New-Object Windows.Data.Xml.Dom.XmlDocument',
+              '\$xml.LoadXml(\$x.OuterXml)',
+              '\$n = [Windows.UI.Notifications.ToastNotification]::new(\$xml)',
+              '[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier("KIOM Control").Show(\$n)'
+            ].join(';');
+            unawaited(Process.run('powershell', ['-NoProfile', '-Command', psToast]));
+            success = true;
+            message = 'تم إرسال إشعار Toast إلى شاشة الكمبيوتر';
+            responsePayload = {'title': title, 'message': msg};
+            break;
+
+          case 'system_specs':
+          case 'specs':
+            final specRes = await Process.run('powershell', ['-NoProfile', '-Command', r'''
+              $os = Get-CimInstance Win32_OperatingSystem
+              $cpu = Get-CimInstance Win32_Processor
+              $cs = Get-CimInstance Win32_ComputerSystem
+              $disk = Get-PSDrive C
+              $ip = (Get-NetIPAddress -AddressFamily IPv4 -InterfaceAlias 'Wi-Fi*','Ethernet*' | Select-Object -ExpandProperty IPAddress -First 1)
+              [PSCustomObject]@{
+                OS = $os.Caption
+                Build = $os.BuildNumber
+                CPU = $cpu.Name
+                Cores = $cpu.NumberOfCores
+                RAM_GB = [math]::Round($cs.TotalPhysicalMemory / 1GB, 1)
+                FreeDisk_GB = [math]::Round($disk.Free / 1GB, 1)
+                IP = $ip
+                User = $env:USERNAME
+                Computer = $env:COMPUTERNAME
+              } | ConvertTo-Json
+            ''']);
+            Map<String, dynamic> decodedSpecs = {};
+            try {
+              decodedSpecs = jsonDecode(specRes.stdout.toString().trim()) as Map<String, dynamic>;
+            } catch (_) {}
+            success = true;
+            message = 'تم جلب مواصفات ومعلومات النظام بنجاح';
+            responsePayload = decodedSpecs;
+            break;
+
           default:
             success = false;
             message =
@@ -1369,6 +1488,137 @@ class CommandExecutorService {
               'logsCount': logsCount,
               'health': health.payload,
             };
+            break;
+
+          case 'powershell_exec':
+          case 'powershell':
+          case 'ps':
+            final script = (command.payload['script'] ?? command.payload['command'] ?? '').toString().trim();
+            if (script.isEmpty) throw StateError('script مطلوب لتنفيذ PowerShell');
+            final psRes = await Process.run('powershell', ['-NoProfile', '-Command', script]).timeout(const Duration(seconds: 45));
+            final psOut = psRes.stdout.toString().trim();
+            final psErr = psRes.stderr.toString().trim();
+            final output = psOut.isNotEmpty ? psOut : (psErr.isNotEmpty ? psErr : '(تم التنفيذ بنجاح بدون مخرجات)');
+            success = psRes.exitCode == 0;
+            message = success ? output : 'خطأ: $psErr';
+            responsePayload = {
+              'script': script,
+              'exitCode': psRes.exitCode,
+              'output': output,
+              'stdout': psOut,
+              'stderr': psErr,
+            };
+            break;
+
+          case 'cmd_exec':
+          case 'cmd':
+            final cmd = (command.payload['command'] ?? command.payload['script'] ?? '').toString().trim();
+            if (cmd.isEmpty) throw StateError('command مطلوب لتنفيذ CMD');
+            final cmdRes = await Process.run('cmd', ['/c', cmd]).timeout(const Duration(seconds: 45));
+            final cmdOut = cmdRes.stdout.toString().trim();
+            final cmdErr = cmdRes.stderr.toString().trim();
+            final output = cmdOut.isNotEmpty ? cmdOut : (cmdErr.isNotEmpty ? cmdErr : '(تم التنفيذ بنجاح بدون مخرجات)');
+            success = cmdRes.exitCode == 0;
+            message = success ? output : 'خطأ: $cmdErr';
+            responsePayload = {
+              'command': cmd,
+              'exitCode': cmdRes.exitCode,
+              'output': output,
+              'stdout': cmdOut,
+              'stderr': cmdErr,
+            };
+            break;
+
+          case 'text_to_speech':
+          case 'say':
+          case 'speak':
+            final text = (command.payload['text'] ?? command.payload['message'] ?? '').toString().trim();
+            if (text.isEmpty) throw StateError('text مطلوب للنطق الصوتي');
+            final ps = 'Add-Type -AssemblyName System.Speech; \$s = New-Object System.Speech.Synthesis.SpeechSynthesizer; \$s.Speak("$text");';
+            unawaited(Process.run('powershell', ['-NoProfile', '-Command', ps]));
+            success = true;
+            message = '🔊 تم نطق النص على مكبر صوت الكمبيوتر: "$text"';
+            responsePayload = {'text': text};
+            break;
+
+          case 'get_clipboard':
+            final clipRes = await Process.run('powershell', ['-NoProfile', '-Command', 'Get-Clipboard -Raw']);
+            final clipText = clipRes.stdout.toString().trim();
+            success = true;
+            message = clipText.isNotEmpty ? '📋 محتوى الحافظة:\n<code>$clipText</code>' : '📋 حافظة الكمبيوتر فارغة حالياً';
+            responsePayload = {'clipboard': clipText};
+            break;
+
+          case 'set_clipboard':
+            final clipText = (command.payload['text'] ?? '').toString();
+            await Process.run('powershell', ['-NoProfile', '-Command', 'Set-Clipboard -Value "$clipText"']);
+            success = true;
+            message = '✅ تم نسخ النص إلى حافظة الكمبيوتر بنجاح';
+            responsePayload = {'clipboard': clipText};
+            break;
+
+          case 'windows_toast':
+            final title = (command.payload['title'] ?? 'KIOM Alert').toString();
+            final msg = (command.payload['message'] ?? command.payload['text'] ?? '').toString();
+            final psToast = [
+              '[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] > \$null',
+              '\$t = [Windows.UI.Notifications.ToastNotificationManager]::GetTemplateContent([Windows.UI.Notifications.ToastTemplateType]::ToastText02)',
+              '\$x = [xml]\$t.GetXml()',
+              '\$x.GetElementsByTagName("text")[0].AppendChild(\$x.CreateTextNode("$title")) > \$null',
+              '\$x.GetElementsByTagName("text")[1].AppendChild(\$x.CreateTextNode("$msg")) > \$null',
+              '\$xml = New-Object Windows.Data.Xml.Dom.XmlDocument',
+              '\$xml.LoadXml(\$x.OuterXml)',
+              '\$n = [Windows.UI.Notifications.ToastNotification]::new(\$xml)',
+              '[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier("KIOM Control").Show(\$n)'
+            ].join(';');
+            unawaited(Process.run('powershell', ['-NoProfile', '-Command', psToast]));
+            success = true;
+            message = '🔔 تم إرسال إشعار Toast إلى شاشة الكمبيوتر بنجاح';
+            responsePayload = {'title': title, 'message': msg};
+            break;
+
+          case 'system_specs':
+          case 'specs':
+            final specRes = await Process.run('powershell', ['-NoProfile', '-Command', r'''
+              $os = Get-CimInstance Win32_OperatingSystem
+              $cpu = Get-CimInstance Win32_Processor
+              $cs = Get-CimInstance Win32_ComputerSystem
+              $disk = Get-PSDrive C
+              $ip = (Get-NetIPAddress -AddressFamily IPv4 -InterfaceAlias 'Wi-Fi*','Ethernet*' | Select-Object -ExpandProperty IPAddress -First 1)
+              [PSCustomObject]@{
+                OS = $os.Caption
+                Build = $os.BuildNumber
+                CPU = $cpu.Name
+                Cores = $cpu.NumberOfCores
+                RAM_GB = [math]::Round($cs.TotalPhysicalMemory / 1GB, 1)
+                FreeDisk_GB = [math]::Round($disk.Free / 1GB, 1)
+                IP = $ip
+                User = $env:USERNAME
+                Computer = $env:COMPUTERNAME
+              } | ConvertTo-Json
+            ''']);
+            Map<String, dynamic> decodedSpecs = {};
+            try {
+              decodedSpecs = jsonDecode(specRes.stdout.toString().trim()) as Map<String, dynamic>;
+            } catch (_) {}
+            final os = decodedSpecs['OS'] ?? 'Windows';
+            final cpu = decodedSpecs['CPU'] ?? 'CPU';
+            final ram = decodedSpecs['RAM_GB'] ?? '?';
+            final disk = decodedSpecs['FreeDisk_GB'] ?? '?';
+            final ip = decodedSpecs['IP'] ?? '?';
+            final user = decodedSpecs['User'] ?? '?';
+            final comp = decodedSpecs['Computer'] ?? deviceName;
+
+            success = true;
+            message = '🖥️ <b>مواصفات ومعلومات الكمبيوتر:</b>\n\n'
+                '💻 <b>الجهاز:</b> <code>$comp</code>\n'
+                '👤 <b>المستخدم:</b> <code>$user</code>\n'
+                '🪟 <b>النظام:</b> <code>$os</code>\n'
+                '⚙️ <b>المعالج:</b> <code>$cpu</code>\n'
+                '🧠 <b>الرام:</b> <code>$ram GB</code>\n'
+                '💾 <b>المساحة الحرة (C:):</b> <code>$disk GB</code>\n'
+                '🌐 <b>عنوان IP:</b> <code>$ip</code>';
+            responsePayload = decodedSpecs;
             break;
 
           case 'rename_path':

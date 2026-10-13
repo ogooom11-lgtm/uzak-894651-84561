@@ -150,6 +150,43 @@ class _DeviceDetailsView extends StatelessWidget {
     );
   }
 
+  Future<void> _speakTextOnComputer(BuildContext context) async {
+    final controller = TextEditingController();
+    final text = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('نطق صوتي على سماعات الكمبيوتر'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(
+            labelText: 'اكتب العبارة للنطق',
+            hintText: 'مثال: تم قفل الكمبيوتر أو مرحباً بك',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('إلغاء'),
+          ),
+          FilledButton.icon(
+            onPressed: () => Navigator.pop(dialogContext, controller.text.trim()),
+            icon: const Icon(Icons.record_voice_over_rounded),
+            label: const Text('نطق الآن'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (text == null || text.isEmpty || !context.mounted) return;
+    await _sendCommand(
+      context,
+      CommandType.textToSpeech,
+      'تم إرسال أمر النطق الصوتي للكمبيوتر.',
+      payload: {'text': text},
+    );
+  }
+
   void _open(BuildContext context, Widget screen) {
     Navigator.push(context, MaterialPageRoute(builder: (_) => screen));
   }
@@ -268,6 +305,12 @@ class _DeviceDetailsView extends StatelessWidget {
                   icon: Icons.chat_bubble_rounded,
                   color: const Color(0xFF16A34A),
                   onTap: () => _sendMessageToComputer(context),
+                ),
+                _QuickAction(
+                  title: 'نطق صوتي 🔊',
+                  icon: Icons.record_voice_over_rounded,
+                  color: const Color(0xFF8B5CF6),
+                  onTap: () => _speakTextOnComputer(context),
                 ),
                 _QuickAction(
                   title: 'الأوضاع الذكية',
