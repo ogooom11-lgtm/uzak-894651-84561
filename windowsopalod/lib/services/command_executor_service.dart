@@ -16,6 +16,7 @@ import 'file_manager_service.dart';
 import 'firestore_rest_client.dart';
 import 'path_rule_store.dart';
 import 'permission_state_service.dart';
+import 'process_monitor_service.dart';
 import 'screenshot_service.dart';
 import 'telegram_notifier_service.dart';
 import 'windows_control_service.dart';
@@ -34,6 +35,7 @@ class CommandExecutorService {
   final ScreenshotService screenshotService;
   final TelegramNotifierService telegram;
   final WindowsControlService windowsControl;
+  final ProcessMonitorService processMonitor;
 
   Timer? _timer;
   Timer? _scheduledTimer;
@@ -55,6 +57,7 @@ class CommandExecutorService {
     ScreenshotService? screenshotService,
     TelegramNotifierService? telegram,
     WindowsControlService? windowsControl,
+    ProcessMonitorService? processMonitor,
   })  : fileManager = fileManager ?? FileManagerService(),
         desktopLock = desktopLock ?? DesktopLockService(store: store),
         appBlocker = appBlocker ?? ApplicationBlockerService(store: store),
@@ -62,7 +65,8 @@ class CommandExecutorService {
             ScreenshotService(config: config, store: store),
         telegram =
             telegram ?? TelegramNotifierService(config: config, store: store),
-        windowsControl = windowsControl ?? WindowsControlService();
+        windowsControl = windowsControl ?? WindowsControlService(),
+        processMonitor = processMonitor ?? ProcessMonitorService();
 
   void start() {
     _timer?.cancel();
