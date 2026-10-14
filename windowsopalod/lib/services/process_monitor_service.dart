@@ -6,13 +6,34 @@ class ProcessMonitorService {
   Future<List<OpenAppInfo>> getOpenApps() async {
     final script = r'''
 $ErrorActionPreference = 'SilentlyContinue'
-$items = Get-Process | Where-Object { $_.MainWindowTitle -ne $null -and $_.MainWindowTitle.Trim() -ne '' } | ForEach-Object {
-  [PSCustomObject]@{
-    Id = $_.Id
-    ProcessName = $_.ProcessName
-    Path = $_.Path
-    StartTime = if ($_.StartTime) { $_.StartTime.ToString('o') } else { '' }
-    MainWindowTitle = $_.MainWindowTitle
+$items = @()
+Get-Process | Where-Object { $_.MainWindowHandle -ne 0 -and $_.MainWindowTitle } | ForEach-Object {
+  try {
+    $t = ($_.MainWindowTitle).ToString().Trim()
+    if ($t.Length -gt 0) {
+      $p = ''
+      try { $p = $_.Path } catch { $p = '' }
+      $st = ''
+      try { if ($_.StartTime) { $st = $_.StartTime.ToString('o') } } catch {}
+      $items += [PSCustomObject]@{
+        Id = $_.Id
+        ProcessName = $_.ProcessName
+        Path = $p
+        StartTime = $st
+        MainWindowTitle = $t
+      }
+    }
+  } catch {}
+}
+if ($items.Count -eq 0) {
+  Get-Process | Where-Object { $_.MainWindowHandle -ne 0 } | ForEach-Object {
+    $items += [PSCustomObject]@{
+      Id = $_.Id
+      ProcessName = $_.ProcessName
+      Path = ''
+      StartTime = ''
+      MainWindowTitle = $_.ProcessName
+    }
   }
 }
 $items | ConvertTo-Json -Compress -Depth 3

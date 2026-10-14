@@ -698,9 +698,34 @@ class TelegramCommandService {
       await _handleExecutableText('send_file $path', chatId: chatId, replyToMessageId: messageId);
       return;
     }
+    if (data.startsWith('browse_folder:')) {
+      final path = data.substring('browse_folder:'.length);
+      await _handleExecutableText('browse $path', chatId: chatId, replyToMessageId: messageId);
+      return;
+    }
+    if (data.startsWith('lock_path:')) {
+      final path = data.substring('lock_path:'.length);
+      await _handleExecutableText('protect $path', chatId: chatId, replyToMessageId: messageId);
+      return;
+    }
+    if (data.startsWith('delete_file:')) {
+      final path = data.substring('delete_file:'.length);
+      await _handleExecutableText('delete $path', chatId: chatId, replyToMessageId: messageId);
+      return;
+    }
     if (data.startsWith('close_app:')) {
       final target = data.substring('close_app:'.length);
       await _handleExecutableText('close $target', chatId: chatId, replyToMessageId: messageId);
+      return;
+    }
+    if (data.startsWith('block_app:')) {
+      final target = data.substring('block_app:'.length);
+      await _handleExecutableText('block app $target', chatId: chatId, replyToMessageId: messageId);
+      return;
+    }
+    if (data.startsWith('block_site:')) {
+      final target = data.substring('block_site:'.length);
+      await _handleExecutableText('block site $target', chatId: chatId, replyToMessageId: messageId);
       return;
     }
     if (data.startsWith('allow_app:')) {
@@ -711,6 +736,11 @@ class TelegramCommandService {
     if (data.startsWith('allow_site:')) {
       final target = data.substring('allow_site:'.length);
       await _handleExecutableText('allow site $target', chatId: chatId, replyToMessageId: messageId);
+      return;
+    }
+    if (data.startsWith('allow_item:')) {
+      final target = data.substring('allow_item:'.length);
+      await _handleExecutableText('allow $target', chatId: chatId, replyToMessageId: messageId);
       return;
     }
 
@@ -1763,6 +1793,36 @@ class TelegramCommandService {
           : normalized.substring('حذف '.length).trim();
       return _ParsedTelegramCommand('delete_path', {'path': path});
     }
+    if (lower.startsWith('protect ') ||
+        lower.startsWith('lock_path ') ||
+        lower.startsWith('lockpath ') ||
+        lower.startsWith('حماية ') ||
+        lower.startsWith('قفل مسار ')) {
+      final prefix = [
+        'protect ',
+        'lock_path ',
+        'lockpath ',
+        'حماية ',
+        'قفل مسار ',
+      ].firstWhere((p) => lower.startsWith(p));
+      final path = normalized.substring(prefix.length).trim();
+      return _ParsedTelegramCommand('protect_path', {'path': path});
+    }
+    if (lower.startsWith('unprotect ') ||
+        lower.startsWith('unlock_path ') ||
+        lower.startsWith('unlockpath ') ||
+        lower.startsWith('الغاء حماية ') ||
+        lower.startsWith('إلغاء حماية ')) {
+      final prefix = [
+        'unprotect ',
+        'unlock_path ',
+        'unlockpath ',
+        'الغاء حماية ',
+        'إلغاء حماية ',
+      ].firstWhere((p) => lower.startsWith(p));
+      final path = normalized.substring(prefix.length).trim();
+      return _ParsedTelegramCommand('unprotect_path', {'path': path});
+    }
     if (lower.startsWith('hide ') || lower.startsWith('إخفاء ')) {
       final path = lower.startsWith('hide ')
           ? normalized.substring('hide '.length).trim()
@@ -1863,9 +1923,31 @@ class TelegramCommandService {
   String _briefPayload(String type, Map<String, dynamic> payload) {
     if (payload.isEmpty) return '';
 
+    // Activity Logs
+    if (type == 'request_logs' || type == 'logs') {
+      final logs = (payload['logs'] as List?) ?? const [];
+      if (logs.isEmpty) return '📜 لا توجد سجلات نشاط مسجلة مؤخراً.';
+      final lines = logs.take(15).map((log) {
+        if (log is! Map) return log.toString();
+        final action = (log['action'] ?? log['type'] ?? 'log').toString();
+        final msg = (log['message'] ?? log['text'] ?? '').toString();
+        final timeStr = (log['createdAt'] ?? log['timestamp'] ?? '').toString();
+        var shortTime = '';
+        if (timeStr.isNotEmpty) {
+          final dt = DateTime.tryParse(timeStr);
+          if (dt != null) {
+            shortTime = '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')} - ';
+          }
+        }
+        return '▫️ <b>$shortTime$action</b>: $msg';
+      }).join('\n');
+      return '📜 <b>سجلات النشاط الأخيرة (${logs.length}):</b>\n$lines';
+    }
+
     // File lists
     if (type == 'browse_path' || type == 'search_files') {
       final items = (payload['items'] as List?) ?? const [];
+      if (items.isEmpty) return '📂 المسار فارغ أو لا توجد نتائج مطابقة.';
       final lines = items.take(12).map((item) {
         if (item is! Map) return item.toString();
         final name = (item['name'] ?? '').toString();
@@ -1880,12 +1962,16 @@ class TelegramCommandService {
     // Open apps
     if (type == 'list_open_apps' || type == 'open_apps') {
       final apps = (payload['apps'] as List?) ?? const [];
-      final lines = apps.take(15).map((app) {
+      if (apps.isEmpty) return 'ℹ️ لا توجد تطبيقات مفتوحة بنوافذ نشطة حالياً.';
+      final lines = apps.take(20).map((app) {
         if (app is! Map) return app.toString();
         final name = (app['appName'] ?? app['name'] ?? 'App').toString();
         final pid = (app['processId'] ?? app['pid'] ?? '').toString();
         final title = (app['windowTitle'] ?? app['title'] ?? '').toString();
-        return '🔹 <b>$name</b> (PID: <code>$pid</code>)\n   ${title.isNotEmpty ? title : ''}';
+        final site = (app['siteName'] ?? '').toString();
+        final page = (app['pageTitle'] ?? '').toString();
+        final sub = site.isNotEmpty ? '🌐 $site' : (page.isNotEmpty ? '📄 $page' : title);
+        return '🔹 <b>$name</b> (PID: <code>$pid</code>)${sub.isNotEmpty ? '\n   └ $sub' : ''}';
       }).join('\n');
       return lines;
     }
@@ -1893,7 +1979,8 @@ class TelegramCommandService {
     // Installed apps
     if (type == 'list_installed_apps' || type == 'installed_apps') {
       final apps = (payload['apps'] as List?) ?? const [];
-      final lines = apps.take(15).map((app) {
+      if (apps.isEmpty) return '📦 لم يتم العثور على برامج مثبتة مسجلة.';
+      final lines = apps.take(20).map((app) {
         if (app is! Map) return app.toString();
         final name = (app['name'] ?? app['displayName'] ?? 'App').toString();
         final version = (app['version'] ?? '').toString();
@@ -1954,16 +2041,31 @@ class TelegramCommandService {
         final name = (item['name'] ?? '').toString();
         final path = (item['path'] ?? '').toString();
         final isDir = item['type'] == 'directory' || item['type'] == 'drive';
-        if (!isDir && path.isNotEmpty) {
+        if (path.isEmpty) continue;
+        if (isDir) {
           fileButtons.add([
             {
-              'text':
-                  '⬇️ تحميل: ${name.length > 18 ? '${name.substring(0, 18)}...' : name}',
+              'text': '📁 تصفح: ${name.length > 16 ? '${name.substring(0, 16)}...' : name}',
+              'callback_data': 'browse_folder:$path',
+            },
+            {
+              'text': '🛡️ قفل المسار',
+              'callback_data': 'lock_path:$path',
+            },
+          ]);
+        } else {
+          fileButtons.add([
+            {
+              'text': '⬇️ تحميل (${name.length > 14 ? '${name.substring(0, 14)}...' : name})',
               'callback_data': 'get_file:$path',
             },
             {
               'text': '📂 فتح',
               'callback_data': 'exec_open:$path',
+            },
+            {
+              'text': '🗑️ حذف',
+              'callback_data': 'delete_file:$path',
             },
           ]);
         }
@@ -1977,26 +2079,92 @@ class TelegramCommandService {
     if (type == 'list_open_apps' || type == 'open_apps') {
       final apps = (payload['apps'] as List?) ?? const [];
       final buttons = <List<Map<String, String>>>[];
-      for (final app in apps.take(4)) {
+      for (final app in apps.take(5)) {
         if (app is! Map) continue;
-        final name = (app['appName'] ?? app['name'] ?? 'App').toString();
+        final name = (app['appName'] ?? app['name'] ?? '').toString();
         final pid = (app['processId'] ?? app['pid'] ?? '').toString();
-        if (name.isNotEmpty) {
-          buttons.add([
-            {
-              'text': '❌ إغلاق: $name',
-              'callback_data': 'close_app:${pid.isNotEmpty ? pid : name}',
-            },
-          ]);
+        final site = (app['siteName'] ?? '').toString();
+        if (name.isEmpty) continue;
+        final row = <Map<String, String>>[
+          {
+            'text': '❌ إغلاق: $name',
+            'callback_data': 'close_app:${pid.isNotEmpty ? pid : name}',
+          },
+          {
+            'text': '🚫 حظر: $name',
+            'callback_data': 'block_app:$name',
+          },
+        ];
+        if (site.isNotEmpty) {
+          row.add({
+            'text': '🌐 حظر موقع $site',
+            'callback_data': 'block_site:$site',
+          });
         }
+        buttons.add(row);
       }
       buttons.add([
+        {'text': '🔄 تحديث القائمة', 'callback_data': 'open_apps'},
         {'text': '🔙 القائمة الرئيسية', 'callback_data': 'menu_main'},
       ]);
       return {'inline_keyboard': buttons};
     }
 
-    return null;
+    if (type == 'list_installed_apps' || type == 'installed_apps') {
+      final apps = (payload['apps'] as List?) ?? const [];
+      final buttons = <List<Map<String, String>>>[];
+      for (final app in apps.take(6)) {
+        if (app is! Map) continue;
+        final name = (app['name'] ?? app['displayName'] ?? '').toString();
+        if (name.isEmpty) continue;
+        buttons.add([
+          {
+            'text': '🚫 حظر التطبيق: $name',
+            'callback_data': 'block_app:$name',
+          },
+        ]);
+      }
+      buttons.add([
+        {'text': '🔄 تحديث', 'callback_data': 'installed_apps'},
+        {'text': '🔙 القائمة الرئيسية', 'callback_data': 'menu_main'},
+      ]);
+      return {'inline_keyboard': buttons};
+    }
+
+    if (type == 'list_blocked_items' || type == 'blocked_items') {
+      final items = (payload['items'] as List?) ?? const [];
+      final buttons = <List<Map<String, String>>>[];
+      for (final item in items.take(6)) {
+        if (item is! Map) continue;
+        final target = (item['target'] ?? item['domain'] ?? '').toString();
+        if (target.isEmpty) continue;
+        buttons.add([
+          {
+            'text': '🔓 فك حظر: $target',
+            'callback_data': 'allow_item:$target',
+          },
+        ]);
+      }
+      buttons.add([
+        {'text': '🔄 تحديث', 'callback_data': 'blocked_items'},
+        {'text': '🔙 القائمة الرئيسية', 'callback_data': 'menu_main'},
+      ]);
+      return {'inline_keyboard': buttons};
+    }
+
+    if (type == 'request_logs' || type == 'logs') {
+      return {
+        'inline_keyboard': [
+          [
+            {'text': '🔄 تحديث السجل', 'callback_data': 'logs'},
+            {'text': '📊 التحليلات الذكية', 'callback_data': 'smart_insights'},
+          ],
+          [
+            {'text': '🔙 القائمة الرئيسية', 'callback_data': 'menu_main'},
+          ],
+        ],
+      };
+    }
   }
 
   String _truncate(String text, {int max = 3800}) {

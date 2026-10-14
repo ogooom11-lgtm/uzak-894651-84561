@@ -1370,6 +1370,32 @@ class CommandExecutorService {
             message = 'تم فتح المسار على الكمبيوتر';
             break;
 
+          case 'protect_path':
+          case 'lock_path':
+          case 'add_path_rule':
+            final path = (command.payload['path'] ?? '').toString();
+            if (path.isEmpty) throw StateError('path مطلوب');
+            await _upsertPathRule(command.payload);
+            success = true;
+            message = 'تمت إضافة وتفعيل قاعدة حماية المسار بنجاح: $path';
+            responsePayload = {'path': path};
+            break;
+
+          case 'remove_path_rule':
+          case 'unprotect_path':
+            final path = (command.payload['path'] ?? command.payload['id'] ?? '').toString();
+            if (path.isEmpty) throw StateError('path مطلوب');
+            final rule = _matchingPathRule(path);
+            if (rule != null) {
+              await pathRules.removeRule(rule.id);
+            } else {
+              await pathRules.removeRule(path);
+            }
+            success = true;
+            message = 'تم إلغاء حماية المسار: $path';
+            responsePayload = {'path': path};
+            break;
+
           case 'request_logs':
             final logs = _filterLogs(command.payload);
             success = true;
@@ -1441,7 +1467,29 @@ class CommandExecutorService {
 
           case 'list_open_apps':
           case 'open_apps':
-            final apps = store.list('open_apps');
+            List<Map<String, dynamic>> apps = [];
+            try {
+              final liveApps = await processMonitor.getOpenApps();
+              if (liveApps.isNotEmpty) {
+                apps = liveApps.map((e) => e.toMap()).toList();
+                await store.set('open_apps', apps);
+                await store.set('lastOpenApps', apps);
+              }
+            } catch (_) {}
+            if (apps.isEmpty) {
+              apps = store
+                  .list('open_apps')
+                  .whereType<Map>()
+                  .map((e) => e.cast<String, dynamic>())
+                  .toList();
+              if (apps.isEmpty) {
+                apps = store
+                    .list('lastOpenApps')
+                    .whereType<Map>()
+                    .map((e) => e.cast<String, dynamic>())
+                    .toList();
+              }
+            }
             success = true;
             message = 'قائمة البرامج المفتوحة الحالية (${apps.length})';
             responsePayload = {'apps': apps};
@@ -2590,18 +2638,19 @@ class CommandExecutorService {
   List<Map<String, dynamic>> _filterLogs(Map<String, dynamic> payload) {
     final logType = (payload['logType'] ?? 'all').toString();
     final from = DateTime.tryParse((payload['from'] ?? '').toString()) ??
-        DateTime.now().subtract(const Duration(days: 7));
-    final to =
-        DateTime.tryParse((payload['to'] ?? '').toString()) ?? DateTime.now();
+        DateTime.now().subtract(const Duration(days: 30));
+    final to = DateTime.tryParse((payload['to'] ?? '').toString()) ??
+        DateTime.now().add(const Duration(hours: 24));
 
     final logs = store
         .list('logs')
         .whereType<Map>()
         .map((e) => e.cast<String, dynamic>())
         .where((log) {
-      final createdAt = DateTime.tryParse((log['createdAt'] ?? '').toString());
+      final createdAt = DateTime.tryParse(
+          (log['createdAt'] ?? log['timestamp'] ?? '').toString());
       if (createdAt == null) {
-        return false;
+        return true;
       }
       if (createdAt.isBefore(from) || createdAt.isAfter(to)) {
         return false;
@@ -2609,18 +2658,21 @@ class CommandExecutorService {
       if (logType == 'all') {
         return true;
       }
-      return _matchesLogType((log['type'] ?? '').toString(), logType);
+      return _matchesLogType(
+          (log['type'] ?? log['action'] ?? '').toString(), logType);
     }).toList();
 
     logs.sort((a, b) {
-      final ad = DateTime.tryParse((a['createdAt'] ?? '').toString()) ??
+      final ad = DateTime.tryParse(
+              (a['createdAt'] ?? a['timestamp'] ?? '').toString()) ??
           DateTime.fromMillisecondsSinceEpoch(0);
-      final bd = DateTime.tryParse((b['createdAt'] ?? '').toString()) ??
+      final bd = DateTime.tryParse(
+              (b['createdAt'] ?? b['timestamp'] ?? '').toString()) ??
           DateTime.fromMillisecondsSinceEpoch(0);
       return bd.compareTo(ad);
     });
 
-    return logs.take(300).toList().reversed.toList();
+    return logs.take(300).toList();
   }
 
   bool _matchesLogType(String type, String requested) {
