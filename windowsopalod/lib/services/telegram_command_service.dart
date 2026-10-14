@@ -896,17 +896,18 @@ class TelegramCommandService {
       final url = text.substring(text.indexOf(' ') + 1).trim();
       if (url.startsWith('https://')) {
         await store.set('telegramWebAppUrl', url);
-        unawaited(telegram.setChatMenuButton(webAppUrl: url, chatId: chatId));
+        final fullUrl = _buildFullWebAppUrl(url, targetChatId: chatId) ?? url;
+        unawaited(telegram.setChatMenuButton(webAppUrl: fullUrl, chatId: chatId));
         await telegram.sendMessage(
           '📱 <b>تم تفعيل وتعيين رابط التطبيق المصغر (Mini App) بنجاح!</b>\n\n'
           '🔗 <b>الرابط:</b> <code>$url</code>\n'
-          '✅ تم أيضاً ضبط زر القائمة (Menu Button) في تيليجرام لفتح التطبيق بضغطة واحدة.',
+          '✅ تم أيضاً ربطه بالمحادثة تلقائياً وضبط زر القائمة (Menu Button) في تيليجرام لفتح التطبيق بضغطة واحدة.',
           chatId: chatId,
           replyToMessageId: replyToMessageId,
           replyMarkup: {
             'inline_keyboard': [
               [
-                {'text': '🚀 فتح التطبيق المصغر الآن', 'web_app': {'url': url}},
+                {'text': '🚀 فتح التطبيق المصغر الآن', 'web_app': {'url': fullUrl}},
               ],
             ],
           },
@@ -928,8 +929,9 @@ class TelegramCommandService {
         lower == 'miniapp' ||
         lower == 'تطبيق' ||
         lower == 'التطبيق') {
-      final webAppUrl = (store.get<String>('telegramWebAppUrl') ?? '').trim();
-      if (webAppUrl.isNotEmpty) {
+      final rawUrl = (store.get<String>('telegramWebAppUrl') ?? '').trim();
+      final fullUrl = _buildFullWebAppUrl(rawUrl, targetChatId: chatId);
+      if (fullUrl != null && fullUrl.isNotEmpty) {
         await telegram.sendMessage(
           '📱 <b>تطبيق لوحة تحكم KIOM المصغر (Telegram Mini App):</b>\n\n'
           'اضغط على الزر أدناه لفتح لوحة التحكم التفاعلية مباشرة داخل تيليجرام 👇',
@@ -938,7 +940,7 @@ class TelegramCommandService {
           replyMarkup: {
             'inline_keyboard': [
               [
-                {'text': '🚀 فتح لوحة التحكم التفاعلية (Mini App)', 'web_app': {'url': webAppUrl}},
+                {'text': '🚀 فتح لوحة التحكم التفاعلية (Mini App)', 'web_app': {'url': fullUrl}},
               ],
             ],
           },
@@ -1887,6 +1889,26 @@ class TelegramCommandService {
     }
   }
 
+  String? _buildFullWebAppUrl(String? rawUrl, {String? targetChatId}) {
+    if (rawUrl == null || rawUrl.trim().isEmpty) return null;
+    final clean = rawUrl.trim();
+    try {
+      final uri = Uri.parse(clean);
+      final cId = (targetChatId != null && targetChatId.isNotEmpty)
+          ? targetChatId
+          : telegram.effectiveChatId;
+      return uri.replace(queryParameters: {
+        ...uri.queryParameters,
+        if (cId.isNotEmpty) 'chat_id': cId,
+        'device_id': deviceId,
+        'device_name': deviceName,
+        if (telegram.hasBotToken) 'bot_token': telegram.botToken,
+      }).toString();
+    } catch (_) {
+      return clean;
+    }
+  }
+
   String _dashboardText() {
     return '⚡ <b>لوحة تحكم KIOM التفاعلية بالكمبيوتر (سحابة Telegram):</b>\n'
         '🖥️ <b>الجهاز:</b> $deviceName ($deviceId)\n\n'
@@ -1899,14 +1921,15 @@ class TelegramCommandService {
           'callback_data': data,
         };
 
-    final webAppUrl = (store.get<String>('telegramWebAppUrl') ?? '').trim();
+    final rawWebAppUrl = (store.get<String>('telegramWebAppUrl') ?? '').trim();
+    final fullWebAppUrl = _buildFullWebAppUrl(rawWebAppUrl);
     final List<List<Map<String, dynamic>>> rows = [];
 
-    if (webAppUrl.isNotEmpty) {
+    if (fullWebAppUrl != null && fullWebAppUrl.isNotEmpty) {
       rows.add([
         {
           'text': '📱 فتح لوحة التحكم التفاعلية (Mini App)',
-          'web_app': {'url': webAppUrl},
+          'web_app': {'url': fullWebAppUrl},
         },
       ]);
     }

@@ -76,6 +76,33 @@ body {
   display: flex;
   align-items: center;
   gap: 12px;
+<<<<<<< HEAD
+=======
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: var(--radius-md);
+  transition: background 0.15s;
+}
+
+.device-info:active {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.device-selector-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.device-switch-pill {
+  font-size: 10px;
+  background: rgba(56, 189, 248, 0.15);
+  color: var(--accent-color);
+  padding: 2px 6px;
+  border-radius: 10px;
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  font-weight: 700;
+>>>>>>> 251eaa2 (Auto-bind Mini App to conversation and implement multi-device selector)
 }
 
 .status-indicator {
@@ -588,6 +615,138 @@ body {
   font-size: 11px;
 }
 
+<<<<<<< HEAD
+=======
+/* Modal Bottom Sheet */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(6px);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  z-index: 90;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s ease;
+}
+
+.modal-overlay.show {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.modal-card {
+  background: var(--secondary-bg-color);
+  border-top: 1px solid var(--card-border);
+  border-radius: 20px 20px 0 0;
+  width: 100%;
+  max-width: 600px;
+  padding: 20px;
+  max-height: 80vh;
+  overflow-y: auto;
+  transform: translateY(100%);
+  transition: transform 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.1);
+}
+
+.modal-overlay.show .modal-card {
+  transform: translateY(0);
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.modal-title {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.modal-close {
+  background: rgba(255, 255, 255, 0.08);
+  border: none;
+  color: var(--hint-color);
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+/* Devices List */
+.devices-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.device-item-card {
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.device-item-card:hover, .device-item-card:active {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.device-item-card.active {
+  border-color: var(--accent-color);
+  background: rgba(56, 189, 248, 0.08);
+}
+
+.device-item-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.device-item-title {
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.device-item-id {
+  font-size: 10px;
+  color: var(--hint-color);
+  font-family: monospace;
+}
+
+.device-item-badge {
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 12px;
+}
+
+/* Status Box */
+.status-box {
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  padding: 12px;
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.status-box-icon {
+  font-size: 18px;
+}
+
+>>>>>>> 251eaa2 (Auto-bind Mini App to conversation and implement multi-device selector)
 /* Toast */
 .app-toast {
   position: fixed;
@@ -621,7 +780,16 @@ body {
 .mt-3 { margin-top: 12px; }
 .mt-4 { margin-top: 16px; }
 .mb-2 { margin-bottom: 8px; }
+<<<<<<< HEAD
 .text-muted { color: var(--hint-color); }
 .text-sm { font-size: 11px; }
 .text-accent { color: var(--accent-color); }
+=======
+.mb-3 { margin-bottom: 12px; }
+.text-muted { color: var(--hint-color); }
+.text-sm { font-size: 11px; }
+.text-xs { font-size: 10px; }
+.text-accent { color: var(--accent-color); }
+.text-success { color: var(--success-color); }
+>>>>>>> 251eaa2 (Auto-bind Mini App to conversation and implement multi-device selector)
 .font-mono { font-family: 'Consolas', monospace; }

@@ -3,14 +3,22 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<<<<<<< HEAD
   <title>KIOM - Telegram Mini App Dashboard</title>
+=======
+  <title>KIOM - لوحة التحكم بالكمبيوتر (Telegram Mini App)</title>
+>>>>>>> 251eaa2 (Auto-bind Mini App to conversation and implement multi-device selector)
   <!-- Telegram Web App SDK -->
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <!-- Google Fonts: Cairo -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+<<<<<<< HEAD
   <!-- Styles -->
+=======
+  <!-- Stylesheet -->
+>>>>>>> 251eaa2 (Auto-bind Mini App to conversation and implement multi-device selector)
   <link rel="stylesheet" href="styles.css">
 </head>
 <body class="bg-base text-main">
@@ -19,28 +27,50 @@
     <!-- Top Header -->
     <header class="app-header">
       <div class="header-content">
+<<<<<<< HEAD
         <div class="device-info">
           <div class="status-indicator online" id="statusIndicator"></div>
           <div>
             <h1 class="device-title" id="headerDeviceName">كمبيوتر KIOM</h1>
             <p class="device-subtitle" id="headerStatusText">متصل وسحابي • Telegram Cloud</p>
+=======
+        <div class="device-info" onclick="openDeviceSelectorModal()" title="انقر لتغيير أو اختيار جهاز آخر">
+          <div class="status-indicator online" id="statusIndicator"></div>
+          <div>
+            <div class="device-selector-row">
+              <h1 class="device-title" id="headerDeviceName">كمبيوتر KIOM</h1>
+              <span class="device-switch-pill" id="btnSwitchDevice">تبديل ▾</span>
+            </div>
+            <p class="device-subtitle" id="headerStatusText">🟢 متصل تلقائياً بالمحادثة الحالية</p>
+>>>>>>> 251eaa2 (Auto-bind Mini App to conversation and implement multi-device selector)
           </div>
         </div>
         <div class="header-actions">
           <button class="icon-btn" id="btnRefresh" title="تحديث البيانات">
             🔄
           </button>
+<<<<<<< HEAD
           <button class="icon-btn" id="btnSettings" title="الإعدادات">
             ⚙️
+=======
+          <button class="icon-btn" id="btnDevices" onclick="openDeviceSelectorModal()" title="إدارة واختيار الأجهزة">
+            🖥️
+>>>>>>> 251eaa2 (Auto-bind Mini App to conversation and implement multi-device selector)
           </button>
         </div>
       </div>
       
       <!-- Quick Status Badges -->
       <div class="quick-badges">
+<<<<<<< HEAD
         <div class="badge" id="badgeCpu">⚡ CPU: --%</div>
         <div class="badge" id="badgeRam">🧠 RAM: --%</div>
         <div class="badge" id="badgeBattery">🔋 100%</div>
+=======
+        <div class="badge badge-success" id="badgeBinding">🔗 مربوط بالمحادثة</div>
+        <div class="badge" id="badgeCpu">⚡ CPU: --%</div>
+        <div class="badge" id="badgeRam">🧠 RAM: --%</div>
+>>>>>>> 251eaa2 (Auto-bind Mini App to conversation and implement multi-device selector)
         <div class="badge badge-warning" id="badgeInstallGuard">🛡️ حظر التثبيت: نشط</div>
       </div>
     </header>
@@ -50,7 +80,11 @@
 
       <!-- TAB 1: Dashboard (الرئيسية) -->
       <section id="tab-dashboard" class="tab-pane active">
+<<<<<<< HEAD
         <div class="section-title">📊 الحالة الفورية والتحكم السريع</div>
+=======
+        <div class="section-title">📊 التحكم السريع والمراقبة المباشرة</div>
+>>>>>>> 251eaa2 (Auto-bind Mini App to conversation and implement multi-device selector)
         
         <!-- Quick Action Cards Grid -->
         <div class="grid grid-2">
@@ -87,7 +121,11 @@
           <button class="action-card" onclick="sendPcCommand('/mic 10')">
             <span class="card-icon">🎙️</span>
             <span class="card-title">ميكروفون الغرفة</span>
+<<<<<<< HEAD
             <span class="card-desc">تسجيل صوتي 10 ثوانٍ وإرساله</span>
+=======
+            <span class="card-desc">تسجيل صوتي 10ث وإرساله</span>
+>>>>>>> 251eaa2 (Auto-bind Mini App to conversation and implement multi-device selector)
           </button>
         </div>
 
@@ -119,6 +157,7 @@
           <span class="card-section-title">🖥️ معلومات النظام والنافذة الحالية</span>
           <div class="info-list mt-2">
             <div class="info-row">
+<<<<<<< HEAD
               <span class="info-label">النافذة النشطة:</span>
               <span class="info-value text-accent" id="valActiveWindow">جاري الفحص...</span>
             </div>
@@ -132,6 +171,24 @@
             </div>
           </div>
           <button class="btn btn-secondary w-100 mt-3" onclick="sendPcCommand('/specs')">📋 جلب المواصفات الكاملة للعتاد</button>
+=======
+              <span class="info-label">الجهاز المحدد:</span>
+              <span class="info-value text-accent font-mono" id="valCurrentDevice">--</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">معرف المحادثة:</span>
+              <span class="info-value font-mono" id="valCurrentChat">--</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">الربط التلقائي:</span>
+              <span class="info-value text-success" id="valAutoBindState">✅ نشط تلقائياً</span>
+            </div>
+          </div>
+          <div class="grid grid-2 mt-3">
+            <button class="btn btn-secondary" onclick="sendPcCommand('/specs')">📋 مواصفات العتاد</button>
+            <button class="btn btn-outline" onclick="openDeviceSelectorModal()">🔄 اختيار جهاز آخر</button>
+          </div>
+>>>>>>> 251eaa2 (Auto-bind Mini App to conversation and implement multi-device selector)
         </div>
       </section>
 
@@ -153,6 +210,29 @@
           </div>
         </div>
 
+<<<<<<< HEAD
+=======
+        <!-- Siren Alarm & Remote Media / Keys -->
+        <div class="card mt-4">
+          <span class="card-section-title">🚨 صافرة الإنذار ومحاكاة المفاتيح السريعة</span>
+          <div class="grid grid-2 mt-2">
+            <button class="btn btn-danger" onclick="sendPcCommand('/alarm 10')">🚨 إطلاق إنذار قوي (10ث)</button>
+            <button class="btn btn-secondary" onclick="sendPcCommand('/press %{F4}')">❌ إغلاق النافذة (Alt+F4)</button>
+            <button class="btn btn-secondary" onclick="sendPcCommand('/press ^{w}')">📑 إغلاق التبويب (Ctrl+W)</button>
+            <button class="btn btn-secondary" onclick="sendPcCommand('/press {SPACE}')">⏯️ تشغيل/إيقاف مؤقت (Space)</button>
+          </div>
+        </div>
+
+        <!-- Remote Browser Opener -->
+        <div class="card mt-4">
+          <span class="card-section-title">🌐 فتح رابط في متصفح الكمبيوتر عن بُعد</span>
+          <div class="input-group mt-2">
+            <input type="text" id="inputOpenUrl" placeholder="https://youtube.com/..." class="form-input font-mono">
+            <button class="btn btn-primary" onclick="handleOpenRemoteUrl()">فتح 🚀</button>
+          </div>
+        </div>
+
+>>>>>>> 251eaa2 (Auto-bind Mini App to conversation and implement multi-device selector)
         <!-- Power Management -->
         <div class="card mt-4">
           <span class="card-section-title">🔌 خيارات الطاقة وإيقاف التشغيل</span>
@@ -184,6 +264,7 @@
             <button class="btn btn-secondary" onclick="handleSetClipboard()">📤 نسخ نص للحافظة</button>
           </div>
         </div>
+<<<<<<< HEAD
 
         <!-- Siren Alarm & Remote Media / Keys -->
         <div class="card mt-4">
@@ -213,6 +294,8 @@
             <button class="btn btn-success" onclick="handleRemoteDownload()">تنزيل 📥</button>
           </div>
         </div>
+=======
+>>>>>>> 251eaa2 (Auto-bind Mini App to conversation and implement multi-device selector)
       </section>
 
       <!-- TAB 3: Security & Restrictions (الأمان والممنوعات) -->
@@ -265,9 +348,15 @@
         </div>
       </section>
 
+<<<<<<< HEAD
       <!-- TAB 4: File Explorer (مدير الملفات) -->
       <section id="tab-files" class="tab-pane">
         <div class="section-title">📁 استعراض الملفات وتنزيلها عبر Telegram</div>
+=======
+      <!-- TAB 4: File Explorer & Cloud Upload (الملفات والرفع السحابي) -->
+      <section id="tab-files" class="tab-pane">
+        <div class="section-title">📁 استعراض الملفات والرفع السحابي إلى OneDrive / Google Drive</div>
+>>>>>>> 251eaa2 (Auto-bind Mini App to conversation and implement multi-device selector)
 
         <div class="card">
           <span class="card-section-title">📂 المجلدات الرئيسية السريعة</span>
@@ -298,12 +387,21 @@
           </div>
         </div>
 
+<<<<<<< HEAD
+=======
+        <!-- Cloud Upload to OneDrive / Google Drive -->
+>>>>>>> 251eaa2 (Auto-bind Mini App to conversation and implement multi-device selector)
         <div class="card mt-4">
           <span class="card-section-title">☁️ رفع ملف إلى OneDrive أو Google Drive أو رابط سحابي</span>
           <p class="text-muted text-sm mt-1">رفع الملف في الخلفية وإرسال تقرير الإنجاز إلى محادثتك.</p>
           <div class="mt-2">
+<<<<<<< HEAD
             <input type="text" id="inputCloudLocalPath" placeholder="مسار الملف بالكمبيوتر (C:\folder\file.zip)" class="form-input font-mono mb-2">
             <input type="text" id="inputCloudUploadUrl" placeholder="رابط الرفع السحابي (اختياري لو أردت الرفع المباشر لرابطك)" class="form-input font-mono mb-2">
+=======
+            <input type="text" id="inputCloudLocalPath" placeholder="مسار الملف بالكمبيوتر (مثال: C:\work\file.zip)" class="form-input font-mono mb-2">
+            <input type="text" id="inputCloudUploadUrl" placeholder="رابط الرفع السحابي (اختياري للرفع المباشر لرابطك)" class="form-input font-mono mb-2">
+>>>>>>> 251eaa2 (Auto-bind Mini App to conversation and implement multi-device selector)
             <div class="grid grid-3">
               <button class="btn btn-primary" onclick="handleCloudUploadUrl()">رفع للرابط 🚀</button>
               <button class="btn btn-secondary" onclick="handleSyncOneDrive()">OneDrive ☁️</button>
@@ -312,6 +410,18 @@
             <button class="btn btn-outline w-100 mt-2" onclick="handleFastCloudUpload()">⚡ رفع لسحابة سريعة وتوليد رابط تحميل</button>
           </div>
         </div>
+<<<<<<< HEAD
+=======
+
+        <!-- Remote Downloader -->
+        <div class="card mt-4">
+          <span class="card-section-title">📥 تنزيل ملف من رابط مباشر إلى الكمبيوتر</span>
+          <div class="input-group mt-2">
+            <input type="text" id="inputDownloadUrl" placeholder="https://example.com/file.zip" class="form-input font-mono">
+            <button class="btn btn-success" onclick="handleRemoteDownload()">تنزيل 📥</button>
+          </div>
+        </div>
+>>>>>>> 251eaa2 (Auto-bind Mini App to conversation and implement multi-device selector)
       </section>
 
       <!-- TAB 5: Terminal / PowerShell (الطرفية الذكية) -->
@@ -346,6 +456,7 @@
             <span class="terminal-dot green"></span>
             <span class="terminal-title">KIOM Remote PowerShell Console</span>
           </div>
+<<<<<<< HEAD
           <pre class="terminal-body" id="terminalOutput">جاهز لتنفيذ الأوامر... النتائج ستظهر في محادثة التيليجرام وفور انتهاء المعالجة.</pre>
         </div>
       </section>
@@ -380,6 +491,48 @@
           <span class="card-section-title">ℹ️ معلومات التطبيق المصغر (Telegram Mini App)</span>
           <p class="text-muted text-sm mt-2">
             يعمل هذا التطبيق مباشرة داخل Telegram عبر Webview متوافق تماماً مع iOS و Android و Telegram Desktop و Web.
+=======
+          <pre class="terminal-body" id="terminalOutput">جاهز لتنفيذ الأوامر... النتائج ستصل إلى محادثة Telegram فور انتهاء المعالجة.</pre>
+        </div>
+      </section>
+
+      <!-- TAB 6: Settings (معلومات الاتصال) -->
+      <section id="tab-settings" class="tab-pane">
+        <div class="section-title">⚙️ معلومات الاتصال والمحادثة المربوطة</div>
+
+        <div class="card">
+          <span class="card-section-title">🔗 حالة الربط التلقائي</span>
+          <div class="status-box online mt-2">
+            <span class="status-box-icon">✅</span>
+            <div>
+              <strong>مربوط تلقائياً بالمحادثة الحالية</strong>
+              <p class="text-xs text-muted">تم استخراج معرّف المحادثة والجهاز وتأمينهما تلقائياً من جلسة تيليجرام.</p>
+            </div>
+          </div>
+
+          <div class="form-group mt-3">
+            <label class="form-label">معرف المحادثة المربوط (Chat ID):</label>
+            <input type="text" id="cfgChatId" class="form-input font-mono" readonly>
+          </div>
+
+          <div class="form-group mt-3">
+            <label class="form-label">معرّف الجهاز النشط (Device ID):</label>
+            <input type="text" id="cfgDeviceId" class="form-input font-mono" readonly>
+          </div>
+
+          <div class="form-group mt-3">
+            <label class="form-label">اسم الجهاز النشط (Device Name):</label>
+            <input type="text" id="cfgDeviceName" class="form-input" readonly>
+          </div>
+
+          <button class="btn btn-secondary w-100 mt-4" onclick="openDeviceSelectorModal()">🔄 إدارة وتبديل الأجهزة المتصلة</button>
+        </div>
+
+        <div class="card mt-4">
+          <span class="card-section-title">ℹ️ معلومات التطبيق المصغر</span>
+          <p class="text-muted text-sm mt-2">
+            يعمل هذا التطبيق المصغر داخل تيليجرام مباشرة ويرسل الأوامر لجهاز الكمبيوتر المختار بضغطة زر.
+>>>>>>> 251eaa2 (Auto-bind Mini App to conversation and implement multi-device selector)
           </p>
           <div class="mt-3">
             <button class="btn btn-outline w-100" onclick="Telegram.WebApp.close()">إغلاق التطبيق المصغر ✖️</button>
@@ -417,6 +570,30 @@
       </button>
     </nav>
 
+<<<<<<< HEAD
+=======
+    <!-- Device Selector Bottom Sheet / Modal -->
+    <div id="deviceSelectorModal" class="modal-overlay">
+      <div class="modal-card">
+        <div class="modal-header">
+          <h2 class="modal-title">🖥️ اختيار جهاز الكمبيوتر للتحكم</h2>
+          <button class="modal-close" onclick="closeDeviceSelectorModal()">✕</button>
+        </div>
+        <p class="text-muted text-sm mb-3">اختر الجهاز الذي ترغب في توجيه الأوامر والمراقبة إليه الآن:</p>
+        
+        <!-- Devices List Container -->
+        <div class="devices-list" id="devicesListContainer">
+          <!-- Populated dynamically by app.js -->
+        </div>
+
+        <div class="modal-actions mt-3">
+          <button class="btn btn-outline w-100" onclick="handlePromptAddDevice()">➕ إضافة كمبيوتر آخر بمعرف ID</button>
+          <button class="btn btn-primary w-100 mt-2" onclick="closeDeviceSelectorModal()">تأكيد الاختيار ✅</button>
+        </div>
+      </div>
+    </div>
+
+>>>>>>> 251eaa2 (Auto-bind Mini App to conversation and implement multi-device selector)
     <!-- Toast Notification Overlay -->
     <div id="appToast" class="app-toast"></div>
 
