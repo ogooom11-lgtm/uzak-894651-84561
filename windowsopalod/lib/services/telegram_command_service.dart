@@ -714,8 +714,16 @@ class TelegramCommandService {
       return;
     }
 
+    final callbackText = _textFromCallbackData(data);
+    final handled = await _handleControlCommand(
+      callbackText,
+      chatId: chatId,
+      replyToMessageId: messageId,
+    );
+    if (handled) return;
+
     await _handleExecutableText(
-      _textFromCallbackData(data),
+      callbackText,
       chatId: chatId,
       replyToMessageId: messageId,
     );
@@ -737,7 +745,8 @@ class TelegramCommandService {
     final parsed = _parseCommand(text);
     if (parsed == null) {
       await telegram.sendMessage(
-        _helpText(),
+        '⚠️ <b>الأمر غير معروف:</b> <code>$text</code>\n\n'
+        'اختر أحد الأزرار التفاعلية أدناه للتحكم السريع، أو اضغط <b>📖 دليل الأوامر</b> لمعرفة الصيغ المتاحة:',
         chatId: chatId,
         replyToMessageId: replyToMessageId,
         replyMarkup: _dashboardInlineMenu(),
@@ -963,8 +972,10 @@ class TelegramCommandService {
     if (lower.startsWith('/allow_install') ||
         lower.startsWith('/allowinstall') ||
         lower.startsWith('allow install') ||
+        lower.startsWith('allow_install') ||
         lower.startsWith('سماح تثبيت') ||
-        lower.startsWith('سماح بالتثبيت')) {
+        lower.startsWith('سماح بالتثبيت') ||
+        lower.startsWith('السماح بالتثبيت')) {
       final parts = text.split(RegExp(r'\s+'));
       final mins = parts.length > 1 ? (int.tryParse(parts[1]) ?? 15) : 15;
       final until = DateTime.now().add(Duration(minutes: mins));
@@ -981,6 +992,7 @@ class TelegramCommandService {
 
     if (lower == '/block_install' ||
         lower == 'block install' ||
+        lower == 'block_install' ||
         lower == 'منع التثبيت' ||
         lower == 'قفل التثبيت' ||
         lower == 'حظر التثبيت') {
@@ -996,10 +1008,14 @@ class TelegramCommandService {
     }
 
     if (lower.startsWith('/alarm') ||
+        lower.startsWith('alarm') ||
         lower.startsWith('/siren') ||
+        lower.startsWith('siren') ||
         lower == 'إنذار' ||
         lower == 'انذار' ||
-        lower == 'صافرة') {
+        lower == 'صافرة' ||
+        lower.startsWith('صافرة انذار') ||
+        lower.startsWith('صافرة إنذار')) {
       final parts = text.split(RegExp(r'\s+'));
       final secs = parts.length > 1 ? (int.tryParse(parts[1]) ?? 8) : 8;
       unawaited(executor.windowsControl.triggerSirenAlarm(seconds: secs));
@@ -1013,7 +1029,9 @@ class TelegramCommandService {
     }
 
     if (lower.startsWith('/open ') ||
+        lower.startsWith('open ') ||
         lower.startsWith('/browse_url ') ||
+        lower.startsWith('browse_url ') ||
         lower.startsWith('افتح ')) {
       final rawUrl = text.substring(text.indexOf(' ') + 1).trim();
       final url = rawUrl.startsWith('http://') || rawUrl.startsWith('https://')
@@ -1030,7 +1048,10 @@ class TelegramCommandService {
       return true;
     }
 
-    if (lower.startsWith('/press ') || lower.startsWith('/key ')) {
+    if (lower.startsWith('/press ') ||
+        lower.startsWith('press ') ||
+        lower.startsWith('/key ') ||
+        lower.startsWith('key ')) {
       final key = text.substring(text.indexOf(' ') + 1).trim();
       final res = await executor.windowsControl.simulateKeyPress(key);
       await telegram.sendMessage(
@@ -1044,7 +1065,9 @@ class TelegramCommandService {
     }
 
     if (lower.startsWith('/download ') ||
+        lower.startsWith('download ') ||
         lower.startsWith('/dl ') ||
+        lower.startsWith('dl ') ||
         lower.startsWith('تحميل ')) {
       final args = text
           .substring(text.indexOf(' ') + 1)
@@ -1069,7 +1092,9 @@ class TelegramCommandService {
     }
 
     if (lower == '/webcam' ||
+        lower == 'webcam' ||
         lower == '/camera' ||
+        lower == 'camera' ||
         lower == 'كاميرا' ||
         lower == 'ويبكام') {
       await telegram.sendMessage(
@@ -1098,7 +1123,9 @@ class TelegramCommandService {
     }
 
     if (lower.startsWith('/mic') ||
+        lower.startsWith('mic') ||
         lower.startsWith('/listen') ||
+        lower.startsWith('listen') ||
         lower.startsWith('تسجيل') ||
         lower.startsWith('ميكروفون')) {
       final parts = text.split(RegExp(r'\s+'));
@@ -1268,6 +1295,7 @@ class TelegramCommandService {
     // Apps & Processes
     if (lower == 'apps' ||
         lower == 'open apps' ||
+        lower == 'open_apps' ||
         lower == 'openapps' ||
         lower == 'البرامج' ||
         lower == 'البرامج المفتوحة' ||
@@ -1275,26 +1303,83 @@ class TelegramCommandService {
       return const _ParsedTelegramCommand('list_open_apps');
     }
     if (lower == 'installed' ||
+        lower == 'installed_apps' ||
+        lower == 'installed apps' ||
+        lower == 'installedapps' ||
         lower == 'programs' ||
         lower == 'البرامج المثبتة' ||
         lower == 'التطبيقات المثبتة') {
       return const _ParsedTelegramCommand('list_installed_apps');
     }
     if (lower == 'blocked' ||
+        lower == 'blocked_items' ||
+        lower == 'blocked items' ||
+        lower == 'blockeditems' ||
         lower == 'الممنوعات' ||
         lower == 'قائمة المنع') {
       return const _ParsedTelegramCommand('list_blocked_items');
     }
     if (lower == 'rules' ||
+        lower == 'path_rules' ||
+        lower == 'path rules' ||
+        lower == 'pathrules' ||
         lower == 'قواعد الحماية' ||
         lower == 'حماية المسارات') {
       return const _ParsedTelegramCommand('list_path_rules');
     }
     if (lower == 'insights' ||
+        lower == 'smart_insights' ||
+        lower == 'smart insights' ||
+        lower == 'smartinsights' ||
         lower == 'التحليلات' ||
         lower == 'ملخص' ||
         lower == 'تقرير') {
       return const _ParsedTelegramCommand('smart_insights');
+    }
+
+    if (lower == 'qr' || lower == 'رمز الربط' || lower == 'كود الربط') {
+      return const _ParsedTelegramCommand('show_pairing_qr');
+    }
+    if (lower == 'permissions' || lower == 'الاذونات' || lower == 'الصلاحيات') {
+      return const _ParsedTelegramCommand('show_permission_center');
+    }
+    if (lower == 'logs' || lower == 'السجلات' || lower == 'سجل النشاط') {
+      return const _ParsedTelegramCommand('request_logs');
+    }
+
+    // Direct callback shortcuts for modes, privacy, browse, messages
+    if (lower == 'mode_study') return const _ParsedTelegramCommand('apply_preset_mode', {'mode': 'study'});
+    if (lower == 'mode_work') return const _ParsedTelegramCommand('apply_preset_mode', {'mode': 'work'});
+    if (lower == 'mode_kids') return const _ParsedTelegramCommand('apply_preset_mode', {'mode': 'kids'});
+    if (lower == 'mode_protection') return const _ParsedTelegramCommand('apply_preset_mode', {'mode': 'protection'});
+
+    if (lower == 'privacy_on') return const _ParsedTelegramCommand('privacy_mode', {'enabled': true});
+    if (lower == 'privacy_off') return const _ParsedTelegramCommand('privacy_mode', {'enabled': false});
+
+    if (lower == 'browse_downloads') return _ParsedTelegramCommand('browse_path', {'path': _getKnownFolder('Downloads')});
+    if (lower == 'browse_desktop') return _ParsedTelegramCommand('browse_path', {'path': _getKnownFolder('Desktop')});
+    if (lower == 'browse_documents') return _ParsedTelegramCommand('browse_path', {'path': _getKnownFolder('Documents')});
+    if (lower == 'browse_c') return const _ParsedTelegramCommand('browse_path', {'path': r'C:\'});
+    if (lower == 'browse_d') return const _ParsedTelegramCommand('browse_path', {'path': r'D:\'});
+    if (lower == 'browse_roots') return const _ParsedTelegramCommand('browse_path', {'path': 'roots'});
+
+    if (lower == 'msg_break') {
+      return const _ParsedTelegramCommand('show_message', {
+        'title': 'تنبيه النظام',
+        'message': 'حان وقت الاستراحة، يرجى الابتعاد عن الشاشة.',
+      });
+    }
+    if (lower == 'msg_save') {
+      return const _ParsedTelegramCommand('show_message', {
+        'title': 'تنبيه النظام',
+        'message': 'تنبيه: يرجى حفظ جميع أعمالك وإغلاق البرامج.',
+      });
+    }
+    if (lower == 'msg_urgent') {
+      return const _ParsedTelegramCommand('show_message', {
+        'title': 'تنبيه عاجل',
+        'message': 'تنبيه عاجل: مطلوب التحدث مع مسؤول النظام.',
+      });
     }
 
     // Basic Controls & Status
@@ -1376,6 +1461,18 @@ class TelegramCommandService {
     }
 
     // Lock & Power Commands
+    if (lower.startsWith('lock_')) {
+      final minutes = int.tryParse(lower.substring('lock_'.length));
+      if (minutes != null) {
+        return _ParsedTelegramCommand('lock_for_duration', {'minutes': minutes});
+      }
+    }
+    if (lower.startsWith('shutdown_')) {
+      final minutes = int.tryParse(lower.substring('shutdown_'.length));
+      if (minutes != null) {
+        return _ParsedTelegramCommand('shutdown_pc', {'delaySeconds': minutes * 60});
+      }
+    }
     if (first == 'lock' || first == 'قفل') {
       final minutes = int.tryParse(rest);
       return _ParsedTelegramCommand(
@@ -1397,46 +1494,58 @@ class TelegramCommandService {
     }
 
     // Volume Commands
+    if (lower.startsWith('vol_')) {
+      final vol = int.tryParse(lower.substring('vol_'.length));
+      if (vol != null) {
+        return _ParsedTelegramCommand('set_volume', {'volume': vol});
+      }
+    }
     if (first == 'volume' || first == 'vol' || first == 'صوت') {
       final volume = int.tryParse(rest);
       if (volume != null) {
         return _ParsedTelegramCommand('set_volume', {'volume': volume});
       }
     }
-    if (lower == 'volup' || lower == 'vol+' || lower == 'volume up' || lower == 'رفع الصوت' || lower == 'علي الصوت') {
+    if (lower == 'volup' || lower == 'vol_up' || lower == 'vol+' || lower == 'volume up' || lower == 'رفع الصوت' || lower == 'علي الصوت') {
       return const _ParsedTelegramCommand('volume_up');
     }
-    if (lower == 'voldown' || lower == 'vol-' || lower == 'volume down' || lower == 'خفض الصوت' || lower == 'وطي الصوت') {
+    if (lower == 'voldown' || lower == 'vol_down' || lower == 'vol-' || lower == 'volume down' || lower == 'خفض الصوت' || lower == 'وطي الصوت') {
       return const _ParsedTelegramCommand('volume_down');
     }
-    if (lower == 'mute' || lower == 'كتم' || lower == 'كتم الصوت') {
+    if (lower == 'mute' || lower == 'vol_mute' || lower == 'كتم' || lower == 'كتم الصوت') {
       return const _ParsedTelegramCommand('mute_volume');
     }
-    if (lower == 'unmute' || lower == 'الغاء كتم' || lower == 'إلغاء الكتم') {
+    if (lower == 'unmute' || lower == 'vol_unmute' || lower == 'الغاء كتم' || lower == 'إلغاء الكتم') {
       return const _ParsedTelegramCommand('unmute_volume');
     }
 
     // WiFi & Internet Commands
-    if ((first == 'wifi' && rest.toLowerCase() == 'on') ||
+    if (lower == 'wifi_on' ||
+        (first == 'wifi' && rest.toLowerCase() == 'on') ||
         lower == 'تشغيل الواي فاي' ||
         lower == 'واي فاي تشغيل') {
       return const _ParsedTelegramCommand('wifi_on');
     }
-    if ((first == 'wifi' && rest.toLowerCase() == 'off') ||
+    if (lower == 'wifi_off' ||
+        (first == 'wifi' && rest.toLowerCase() == 'off') ||
         lower == 'ايقاف الواي فاي' ||
         lower == 'إيقاف الواي فاي' ||
         lower == 'واي فاي ايقاف') {
       return const _ParsedTelegramCommand('wifi_off');
     }
-    if (lower == 'internet off' ||
+    if (lower == 'net_off' ||
+        lower == 'internet off' ||
         lower == 'net off' ||
+        lower == 'internet_off' ||
         lower == 'ايقاف الانترنت نهائيا' ||
         lower == 'إيقاف الانترنت نهائياً' ||
         lower == 'قطع الانترنت') {
       return const _ParsedTelegramCommand('internet_off_permanent');
     }
-    if (lower == 'internet on' ||
+    if (lower == 'net_on' ||
+        lower == 'internet on' ||
         lower == 'net on' ||
+        lower == 'internet_on' ||
         lower == 'تشغيل الانترنت' ||
         lower == 'تشغيل الإنترنت' ||
         lower == 'اعادة الانترنت') {
@@ -1444,15 +1553,20 @@ class TelegramCommandService {
     }
 
     // Bluetooth Commands
-    if ((first == 'bluetooth' || first == 'bt') && rest.toLowerCase() == 'on') {
+    if (lower == 'bt_on' ||
+        lower == 'bluetooth_on' ||
+        ((first == 'bluetooth' || first == 'bt') && rest.toLowerCase() == 'on')) {
       return const _ParsedTelegramCommand('bluetooth_on');
     }
-    if ((first == 'bluetooth' || first == 'bt') &&
-        rest.toLowerCase() == 'off') {
+    if (lower == 'bt_off' ||
+        lower == 'bluetooth_off' ||
+        ((first == 'bluetooth' || first == 'bt') && rest.toLowerCase() == 'off')) {
       return const _ParsedTelegramCommand('bluetooth_off');
     }
-    if ((first == 'bluetooth' || first == 'bt') &&
-        (rest.toLowerCase() == 'devices' || rest.toLowerCase() == 'list')) {
+    if (lower == 'bt_devices' ||
+        lower == 'bluetooth_devices' ||
+        ((first == 'bluetooth' || first == 'bt') &&
+            (rest.toLowerCase() == 'devices' || rest.toLowerCase() == 'list'))) {
       return const _ParsedTelegramCommand('list_bluetooth_devices');
     }
     if ((first == 'bluetooth' || first == 'bt') &&
