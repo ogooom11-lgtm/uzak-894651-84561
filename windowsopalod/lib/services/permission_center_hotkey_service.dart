@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:ffi';
 import 'dart:io';
 
@@ -7,7 +6,6 @@ import '../utils/json_file_store.dart';
 import '../utils/process_runner.dart';
 import 'firestore_rest_client.dart';
 import 'permission_state_service.dart';
-import 'startup_task_service.dart';
 
 class PermissionCenterHotkeyService {
   final String deviceId;
@@ -19,7 +17,6 @@ class PermissionCenterHotkeyService {
   DateTime? _holdStartedAt;
   bool _triggeredForHold = false;
   bool _printedHoldStarted = false;
-  bool _isShowing = false;
   DateTime? _lastFileTriggerCheck;
 
   static const int _vkControl = 0x11;
@@ -140,171 +137,4 @@ class PermissionCenterHotkeyService {
           'permission_sync_firestore_error', e.toString(), {'reason': reason});
     }
   }
-
-  static const String _powerShellScript = r'''
-param(
-  [string]$StatePath,
-  [string]$OutputPath
-)
-
-Add-Type -AssemblyName System.Windows.Forms
-Add-Type -AssemblyName System.Drawing
-
-[System.Windows.Forms.Application]::EnableVisualStyles()
-
-$state = Get-Content -Raw -LiteralPath $StatePath | ConvertFrom-Json
-$permissions = @($state.permissions)
-
-$form = New-Object System.Windows.Forms.Form
-$form.Text = 'KIOM - أذونات التحكم في Windows'
-$form.Size = New-Object System.Drawing.Size(780,620)
-$form.StartPosition = 'CenterScreen'
-$form.TopMost = $true
-$form.RightToLeft = [System.Windows.Forms.RightToLeft]::Yes
-$form.RightToLeftLayout = $true
-$form.FormBorderStyle = 'FixedDialog'
-$form.MaximizeBox = $false
-
-$title = New-Object System.Windows.Forms.Label
-$title.Text = 'شاشة أذونات KIOM PC Agent'
-$title.Font = New-Object System.Drawing.Font('Segoe UI', 15, [System.Drawing.FontStyle]::Bold)
-$title.AutoSize = $true
-$title.Location = New-Object System.Drawing.Point(20,16)
-$form.Controls.Add($title)
-
-$subtitle = New-Object System.Windows.Forms.Label
-$subtitle.Text = 'فعّل الأذونات المطلوبة. التحكم يتم مباشرة من التطبيق عندما يعمل كمسؤول.'
-$subtitle.Font = New-Object System.Drawing.Font('Segoe UI', 9)
-$subtitle.AutoSize = $true
-$subtitle.Location = New-Object System.Drawing.Point(20,50)
-$form.Controls.Add($subtitle)
-
-$panel = New-Object System.Windows.Forms.Panel
-$panel.Location = New-Object System.Drawing.Point(20,82)
-$panel.Size = New-Object System.Drawing.Size(725,405)
-$panel.AutoScroll = $true
-$panel.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
-$form.Controls.Add($panel)
-
-$checkboxes = @{}
-$y = 12
-
-foreach ($p in $permissions) {
-  $available = [bool]$p.available
-  $allowed = [bool]$p.allowed
-  $name = [string]$p.name
-  $description = [string]$p.description
-  $reason = [string]$p.reason
-  $id = [string]$p.id
-
-  $box = New-Object System.Windows.Forms.CheckBox
-  $box.Text = "● $name"
-  $box.Checked = ($available -and $allowed)
-  $box.Enabled = $available
-  $box.Font = New-Object System.Drawing.Font('Segoe UI', 10, [System.Drawing.FontStyle]::Bold)
-  $box.Location = New-Object System.Drawing.Point(15,$y)
-  $box.Size = New-Object System.Drawing.Size(675,24)
-  $panel.Controls.Add($box)
-  $checkboxes[$id] = $box
-
-  $desc = New-Object System.Windows.Forms.Label
-  $desc.Text = $description
-  $desc.Font = New-Object System.Drawing.Font('Segoe UI', 8)
-  $desc.Location = New-Object System.Drawing.Point(38,($y + 25))
-  $desc.Size = New-Object System.Drawing.Size(650,20)
-  $panel.Controls.Add($desc)
-
-  $status = New-Object System.Windows.Forms.Label
-  if ($available) {
-    $status.Text = 'الحالة: متاح الآن'
-    $status.ForeColor = [System.Drawing.Color]::DarkGreen
-  } else {
-    $status.Text = "الحالة: غير متاح حالياً - $reason"
-    $status.ForeColor = [System.Drawing.Color]::DarkRed
-  }
-  $status.Font = New-Object System.Drawing.Font('Segoe UI', 8)
-  $status.Location = New-Object System.Drawing.Point(38,($y + 45))
-  $status.Size = New-Object System.Drawing.Size(650,20)
-  $panel.Controls.Add($status)
-
-  $line = New-Object System.Windows.Forms.Label
-  $line.BorderStyle = [System.Windows.Forms.BorderStyle]::Fixed3D
-  $line.Location = New-Object System.Drawing.Point(15,($y + 72))
-  $line.Size = New-Object System.Drawing.Size(675,2)
-  $panel.Controls.Add($line)
-
-  $y += 86
-}
-
-$note = New-Object System.Windows.Forms.Label
-$note.Text = 'ملاحظة: زر "السماح للكل" يسمح فقط بالأذونات المتاحة في هذه النسخة. بعض الحماية العميقة تحتاج تشغيل التطبيق كمسؤول وصلاحيات Windows كافية.'
-$note.Location = New-Object System.Drawing.Point(20,498)
-$note.Size = New-Object System.Drawing.Size(725,35)
-$note.Font = New-Object System.Drawing.Font('Segoe UI', 9)
-$form.Controls.Add($note)
-
-$allowAllButton = New-Object System.Windows.Forms.Button
-$allowAllButton.Text = 'السماح للكل المتاح'
-$allowAllButton.Location = New-Object System.Drawing.Point(20,540)
-$allowAllButton.Size = New-Object System.Drawing.Size(160,32)
-$form.Controls.Add($allowAllButton)
-
-$denyAllButton = New-Object System.Windows.Forms.Button
-$denyAllButton.Text = 'عدم السماح للكل'
-$denyAllButton.Location = New-Object System.Drawing.Point(190,540)
-$denyAllButton.Size = New-Object System.Drawing.Size(145,32)
-$form.Controls.Add($denyAllButton)
-
-$startupButton = New-Object System.Windows.Forms.Button
-$startupButton.Text = 'تشغيل مع Windows كمسؤول'
-$startupButton.Location = New-Object System.Drawing.Point(345,540)
-$startupButton.Size = New-Object System.Drawing.Size(145,32)
-$form.Controls.Add($startupButton)
-
-$saveButton = New-Object System.Windows.Forms.Button
-$saveButton.Text = 'حفظ'
-$saveButton.Location = New-Object System.Drawing.Point(500,540)
-$saveButton.Size = New-Object System.Drawing.Size(110,32)
-$form.Controls.Add($saveButton)
-
-$cancelButton = New-Object System.Windows.Forms.Button
-$cancelButton.Text = 'إلغاء'
-$cancelButton.Location = New-Object System.Drawing.Point(625,540)
-$cancelButton.Size = New-Object System.Drawing.Size(110,32)
-$form.Controls.Add($cancelButton)
-
-function Save-Result([string]$action) {
-  $values = @{}
-  foreach ($key in $checkboxes.Keys) {
-    $values[$key] = [bool]$checkboxes[$key].Checked
-  }
-  $result = [PSCustomObject]@{
-    action = $action
-    permissions = $values
-    savedAt = (Get-Date).ToUniversalTime().ToString('o')
-  }
-  $result | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $OutputPath -Encoding UTF8
-  $form.Close()
-}
-
-$allowAllButton.Add_Click({
-  foreach ($key in $checkboxes.Keys) {
-    if ($checkboxes[$key].Enabled) { $checkboxes[$key].Checked = $true }
-  }
-  Save-Result 'allowAll'
-})
-
-$denyAllButton.Add_Click({
-  foreach ($key in $checkboxes.Keys) {
-    if ($checkboxes[$key].Enabled) { $checkboxes[$key].Checked = $false }
-  }
-  Save-Result 'denyAll'
-})
-
-$startupButton.Add_Click({ Save-Result 'installStartupTask' })
-$saveButton.Add_Click({ Save-Result 'save' })
-$cancelButton.Add_Click({ $form.Close() })
-
-[void]$form.ShowDialog()
-''';
 }

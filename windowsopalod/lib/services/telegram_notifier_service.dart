@@ -26,15 +26,17 @@ class TelegramNotifierService {
   static const Duration _httpTimeout = Duration(seconds: 20);
 
   String get botToken {
-    if (_customBotToken != null && _customBotToken!.trim().isNotEmpty) {
-      return _customBotToken!.trim();
+    final custom = _customBotToken;
+    if (custom != null && custom.trim().isNotEmpty) {
+      return custom.trim();
     }
     return config.telegramBotToken.trim();
   }
 
   String get effectiveChatId {
-    if (_customChatId != null && _customChatId!.trim().isNotEmpty) {
-      return _customChatId!.trim();
+    final custom = _customChatId;
+    if (custom != null && custom.trim().isNotEmpty) {
+      return custom.trim();
     }
     final override = (store.get<String>('telegramChatIdOverride') ?? '').trim();
     return override.isNotEmpty ? override : config.telegramChatId.trim();

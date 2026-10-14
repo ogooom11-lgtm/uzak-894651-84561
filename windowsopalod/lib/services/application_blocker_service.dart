@@ -27,7 +27,6 @@ class ApplicationBlockerService {
   String? _lastHostsFingerprint;
   String? _lastFailedHostsFingerprint;
   DateTime? _lastHostsWriteFailureAt;
-  DateTime? _lastHostsPermissionNoticeAt;
 
   void start() {
     _timer?.cancel();

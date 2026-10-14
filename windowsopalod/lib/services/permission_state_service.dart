@@ -64,7 +64,10 @@ class PermissionStateService {
   }
 
   List<Map<String, dynamic>> list() {
-    return _names.keys.map((id) => _buildDefaultMap()[id]!).toList();
+    final def = _buildDefaultMap();
+    return _names.keys
+        .map((id) => Map<String, dynamic>.from(def[id] as Map))
+        .toList();
   }
 
   Map<String, dynamic> getPermission(String id) {
