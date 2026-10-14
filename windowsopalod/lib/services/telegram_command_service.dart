@@ -1468,32 +1468,158 @@ class TelegramCommandService {
     }
 
     // App & Website Blocking / Permissions
-    if (first == 'close' || first == 'kill' || first == 'اغلق' || first == 'إغلاق_تطبيق') {
-      return _ParsedTelegramCommand('close_application', {'target': rest});
+    if (first == 'close' ||
+        first == 'kill' ||
+        first == 'closeapp' ||
+        first == 'killapp' ||
+        first == 'close_app' ||
+        first == 'kill_app' ||
+        first == 'اغلق' ||
+        first == 'أغلق' ||
+        first == 'انهاء' ||
+        first == 'إنهاء' ||
+        first == 'إغلاق_تطبيق' ||
+        first == 'اغلاق_تطبيق') {
+      final target = _cleanTargetString(rest);
+      return _ParsedTelegramCommand('close_application', {'target': target});
     }
-    if (lower.startsWith('block app ') || lower.startsWith('منع تطبيق ')) {
-      final target = lower.startsWith('block app ')
-          ? normalized.substring('block app '.length).trim()
-          : normalized.substring('منع تطبيق '.length).trim();
-      return _ParsedTelegramCommand('block_application', {'target': target});
+
+    // Explicit Website Block
+    const blockSitePrefixes = [
+      'blocksite ',
+      'block_site ',
+      'block site ',
+      'blockwebsite ',
+      'block_website ',
+      'block website ',
+      'حظر موقع ',
+      'حظر_موقع ',
+      'منع موقع ',
+      'منع_موقع ',
+      'قفل موقع ',
+    ];
+    for (final prefix in blockSitePrefixes) {
+      if (lower.startsWith(prefix)) {
+        final rawTarget = normalized.substring(prefix.length).trim();
+        final domain = _cleanTargetString(rawTarget);
+        return _ParsedTelegramCommand('block_website', {'domain': domain});
+      }
     }
-    if (lower.startsWith('allow app ') || lower.startsWith('سماح لتطبيق ')) {
-      final target = lower.startsWith('allow app ')
-          ? normalized.substring('allow app '.length).trim()
-          : normalized.substring('سماح لتطبيق '.length).trim();
-      return _ParsedTelegramCommand('allow_application', {'target': target});
+
+    // Explicit Website Allow / Unblock
+    const allowSitePrefixes = [
+      'allowsite ',
+      'allow_site ',
+      'allow site ',
+      'unblocksite ',
+      'unblock_site ',
+      'unblock site ',
+      'allowwebsite ',
+      'allow_website ',
+      'allow website ',
+      'unblockwebsite ',
+      'unblock_website ',
+      'سماح لموقع ',
+      'سماح موقع ',
+      'سماح_موقع ',
+      'فك حظر موقع ',
+      'رفع حظر موقع ',
+      'الغاء حظر موقع ',
+      'إلغاء حظر موقع ',
+    ];
+    for (final prefix in allowSitePrefixes) {
+      if (lower.startsWith(prefix)) {
+        final rawTarget = normalized.substring(prefix.length).trim();
+        final domain = _cleanTargetString(rawTarget);
+        return _ParsedTelegramCommand('allow_website', {'domain': domain});
+      }
     }
-    if (lower.startsWith('block site ') || lower.startsWith('حظر موقع ')) {
-      final target = lower.startsWith('block site ')
-          ? normalized.substring('block site '.length).trim()
-          : normalized.substring('حظر موقع '.length).trim();
-      return _ParsedTelegramCommand('block_website', {'domain': target});
+
+    // Explicit App Block
+    const blockAppPrefixes = [
+      'blockapp ',
+      'block_app ',
+      'block app ',
+      'blockapplication ',
+      'block_application ',
+      'block application ',
+      'منع تطبيق ',
+      'منع_تطبيق ',
+      'حظر تطبيق ',
+      'حظر_تطبيق ',
+      'قفل تطبيق ',
+    ];
+    for (final prefix in blockAppPrefixes) {
+      if (lower.startsWith(prefix)) {
+        final rawTarget = normalized.substring(prefix.length).trim();
+        final app = _cleanTargetString(rawTarget);
+        return _ParsedTelegramCommand('block_application', {'target': app});
+      }
     }
-    if (lower.startsWith('allow site ') || lower.startsWith('سماح لموقع ')) {
-      final target = lower.startsWith('allow site ')
-          ? normalized.substring('allow site '.length).trim()
-          : normalized.substring('سماح لموقع '.length).trim();
-      return _ParsedTelegramCommand('allow_website', {'domain': target});
+
+    // Explicit App Allow / Unblock
+    const allowAppPrefixes = [
+      'allowapp ',
+      'allow_app ',
+      'allow app ',
+      'unblockapp ',
+      'unblock_app ',
+      'unblock app ',
+      'allowapplication ',
+      'allow_application ',
+      'allow application ',
+      'unblockapplication ',
+      'unblock_application ',
+      'سماح لتطبيق ',
+      'سماح تطبيق ',
+      'سماح_تطبيق ',
+      'فك حظر تطبيق ',
+      'رفع منع تطبيق ',
+      'الغاء منع تطبيق ',
+      'إلغاء منع تطبيق ',
+    ];
+    for (final prefix in allowAppPrefixes) {
+      if (lower.startsWith(prefix)) {
+        final rawTarget = normalized.substring(prefix.length).trim();
+        final app = _cleanTargetString(rawTarget);
+        return _ParsedTelegramCommand('allow_application', {'target': app});
+      }
+    }
+
+    // Heuristic "block <target>" / "حظر <target>" / "منع <target>"
+    if (lower.startsWith('block ') || lower.startsWith('حظر ') || lower.startsWith('منع ')) {
+      final prefix = lower.startsWith('block ')
+          ? 'block '
+          : (lower.startsWith('حظر ') ? 'حظر ' : 'منع ');
+      final rawTarget = normalized.substring(prefix.length).trim();
+      final cleaned = _cleanTargetString(rawTarget);
+      if (cleaned.contains('.') && !cleaned.toLowerCase().endsWith('.exe')) {
+        return _ParsedTelegramCommand('block_website', {'domain': cleaned});
+      } else {
+        return _ParsedTelegramCommand('block_application', {'target': cleaned});
+      }
+    }
+
+    // Heuristic "unblock <target>" / "allow <target>" / "سماح <target>"
+    if (lower.startsWith('unblock ') ||
+        lower.startsWith('allow ') ||
+        lower.startsWith('فك حظر ') ||
+        lower.startsWith('رفع حظر ') ||
+        lower.startsWith('سماح ')) {
+      final prefix = [
+        'unblock ',
+        'allow ',
+        'فك حظر ',
+        'رفع حظر ',
+        'سماح ',
+      ].firstWhere((p) => lower.startsWith(p));
+      final rawTarget = normalized.substring(prefix.length).trim();
+      final cleaned = _cleanTargetString(rawTarget);
+      if (cleaned.contains('.') && !cleaned.toLowerCase().endsWith('.exe')) {
+        return _ParsedTelegramCommand('allow_website', {'domain': cleaned});
+      } else {
+        return _ParsedTelegramCommand('allow_application', {'target': cleaned});
+      }
     }
 
     // Files & Explorer Commands
@@ -1567,6 +1693,25 @@ class TelegramCommandService {
     }
 
     return null;
+  }
+
+  String _cleanTargetString(String input) {
+    var text = input.trim();
+    // Strip markdown links e.g. [youtube.com](http://youtube.com)
+    final mdMatch = RegExp(r'\[([^\]]+)\]\([^)]+\)').firstMatch(text);
+    if (mdMatch != null) {
+      text = mdMatch.group(1) ?? text;
+    }
+    // Strip surrounding brackets, quotes, backticks
+    text = text.replaceAll(RegExp(r'''^[\[\(\"\'`<]+|[\]\)\"\'>`]+$'''), '').trim();
+    // If it's a full URL, extract hostname
+    if (text.startsWith('http://') || text.startsWith('https://')) {
+      final uri = Uri.tryParse(text);
+      if (uri != null && uri.host.isNotEmpty) {
+        text = uri.host;
+      }
+    }
+    return text.replaceAll(RegExp(r'^www\.'), '').trim();
   }
 
   String _normalizeCommandText(String text) {

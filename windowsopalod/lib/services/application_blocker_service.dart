@@ -52,59 +52,9 @@ class ApplicationBlockerService {
     final sites = blockedSites().where((s) => !_isTemporarilyAllowed(s)).toList();
     if (sites.isEmpty) return;
 
-    final apps = await monitor.getOpenApps();
-    for (final app in apps) {
-      final titleLower = app.title.toLowerCase();
-      final appNameLower = app.appName.toLowerCase();
-
-      // Check if this is a browser process or window
-      final isBrowser = appNameLower.contains('chrome') ||
-          appNameLower.contains('msedge') ||
-          appNameLower.contains('edge') ||
-          appNameLower.contains('firefox') ||
-          appNameLower.contains('brave') ||
-          appNameLower.contains('opera') ||
-          appNameLower.contains('vivaldi');
-
-      if (!isBrowser && titleLower.isEmpty) continue;
-
-      for (final site in sites) {
-        final domain = _normalizeDomain((site['domain'] ?? '').toString());
-        if (domain.isEmpty) continue;
-        final baseName = domain.split('.').first;
-
-        final matches = titleLower.contains(domain) ||
-            (baseName.length >= 3 && titleLower.contains(baseName));
-
-        if (matches) {
-          if (_recentlyTried(app.processId)) continue;
-          final result = await SafeProcessRunner.run(
-            'taskkill.exe',
-            ['/PID', app.processId.toString(), '/F'],
-            timeout: SafeProcessRunner.shortTimeout,
-          );
-          if (result.exitCode == 0) {
-            await store.appendLog(
-              'blocked_site_window_closed',
-              'تم إغلاق متصفح يحاول فتح موقع ممنوع ($domain)',
-              {
-                'processId': app.processId,
-                'appName': app.appName,
-                'title': app.title,
-                'domain': domain,
-              },
-            );
-            await telegram?.sendMessage(
-              '🚫 KIOM: تم منع وإغلاق صفحة موقع محظور\n'
-              'الموقع: $domain\n'
-              'النافذة: ${app.title}\n'
-              'البرنامج: ${app.appName}',
-            );
-          }
-          break;
-        }
-      }
-    }
+    // Keep the DNS hosts blockade continuously synchronized so the site cannot load,
+    // while keeping the browser and all other tabs completely intact without closing.
+    await _rewriteHostsFile();
   }
 
   List<Map<String, dynamic>> blockedApps() {
@@ -380,13 +330,20 @@ class ApplicationBlockerService {
 
   String _normalizeDomain(String value) {
     var text = value.trim().toLowerCase();
+    // Strip markdown link format e.g. [youtube.com](http://youtube.com)
+    final mdMatch = RegExp(r'\[([^\]]+)\]\([^)]+\)').firstMatch(text);
+    if (mdMatch != null) {
+      text = mdMatch.group(1) ?? text;
+    }
+    text = text.replaceAll(RegExp(r'''[\[\]()<>"'`]'''), '').trim();
     if (text.startsWith('http://') || text.startsWith('https://')) {
       text = Uri.tryParse(text)?.host ?? text;
     }
     text = text.replaceAll(RegExp(r'^www\.'), '');
     text = text.split('/').first;
     text = text.split(':').first;
-    return text;
+    text = text.split('?').first;
+    return text.trim();
   }
 
   String _safeId(String value) {
