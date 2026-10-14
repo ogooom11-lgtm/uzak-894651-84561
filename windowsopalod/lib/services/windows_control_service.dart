@@ -917,6 +917,77 @@ try {
     );
   }
 
+  Future<WindowsControlResult> cleanupSystemTempFiles() async {
+    const script = r'''
+$ErrorActionPreference = 'SilentlyContinue'
+$initialFree = (Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Root -like 'C:*' }).Free
+
+Remove-Item -Path "$env:TEMP\*" -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item -Path "C:\Windows\Temp\*" -Recurse -Force -ErrorAction SilentlyContinue
+Clear-RecycleBin -Force -ErrorAction SilentlyContinue
+
+$finalFree = (Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Root -like 'C:*' }).Free
+$freedBytes = [Math]::Max(0, ($finalFree - $initialFree))
+$freedMB = [Math]::Round($freedBytes / 1MB, 2)
+
+[PSCustomObject]@{
+    Success = $true
+    FreedMB = $freedMB
+    FreedBytes = $freedBytes
+} | ConvertTo-Json -Compress
+''';
+    final result = await SafeProcessRunner.powershell(
+      script,
+      timeout: const Duration(minutes: 2),
+    );
+    final payload = _payload(result);
+    final stdout = result.stdout.toString().trim();
+    if (stdout.startsWith('{')) {
+      try {
+        final decoded = jsonDecode(stdout);
+        if (decoded is Map) payload.addAll(decoded.cast<String, dynamic>());
+      } catch (_) {}
+    }
+    final freedMB = payload['FreedMB'] ?? 0;
+    return WindowsControlResult(
+      success: result.exitCode == 0,
+      message: result.exitCode == 0
+          ? 'تم تنظيف الملفات المؤقتة وسلة المحذوفات بنجاح! تم تحرير حوالي $freedMB ميجابايت من المساحة.'
+          : 'تعذر تنظيف بعض الملفات المؤقتة',
+      payload: payload,
+    );
+  }
+
+  Future<WindowsControlResult> getRunningProcessesReport() async {
+    const script = r'''
+$ErrorActionPreference = 'SilentlyContinue'
+$procs = Get-Process | Sort-Object -Property WS -Descending | Select-Object -First 15 | ForEach-Object {
+    [PSCustomObject]@{
+        Id = $_.Id
+        Name = $_.ProcessName
+        MemMB = [Math]::Round($_.WS / 1MB, 1)
+        CPU = if ($_.CPU) { [Math]::Round($_.CPU, 1) } else { 0 }
+        Title = if ($_.MainWindowTitle) { $_.MainWindowTitle } else { '' }
+    }
+}
+$procs | ConvertTo-Json -Compress
+''';
+    final result = await SafeProcessRunner.powershell(
+      script,
+      timeout: const Duration(seconds: 8),
+    );
+    final payload = _payload(result);
+    final stdout = result.stdout.toString().trim();
+    final items = _decodePowerShellJsonList(stdout);
+    return WindowsControlResult(
+      success: result.exitCode == 0,
+      message: result.exitCode == 0
+          ? 'تم جلب تقرير استهلاك العمليات والذاكرة'
+          : 'فشل جلب العمليات',
+      payload: {'items': items},
+    );
+  }
+
   Future<ProcessResult> _runPowerShell(String script) {
     return SafeProcessRunner.powershell(
       script,

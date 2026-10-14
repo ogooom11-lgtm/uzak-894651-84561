@@ -1499,6 +1499,40 @@ class CommandExecutorService {
             responsePayload = {'apps': apps};
             break;
 
+          case 'list_open_items':
+          case 'open_items':
+          case 'list_open_files':
+          case 'open_files':
+          case 'list_open_sites':
+          case 'open_sites':
+            final items = await processMonitor.getDetailedOpenItems();
+            success = true;
+            final folders = (items['folders'] as List?)?.length ?? 0;
+            final tabs = (items['browserTabs'] as List?)?.length ?? 0;
+            final docs = (items['documents'] as List?)?.length ?? 0;
+            final openAppCount = (items['apps'] as List?)?.length ?? 0;
+            message = 'تقرير شامل بكافة الملفات والمواقع المفتوحة ($tabs موقع، $docs ملف/مستند، $folders مجلد)';
+            responsePayload = items;
+            break;
+
+          case 'cleanup_temp':
+          case 'cleanup_system':
+          case 'clean_pc':
+            final res = await windowsControl.cleanupSystemTempFiles();
+            success = res.success;
+            message = res.message;
+            responsePayload = res.payload;
+            break;
+
+          case 'list_processes':
+          case 'top_processes':
+          case 'tasklist':
+            final res = await windowsControl.getRunningProcessesReport();
+            success = res.success;
+            message = res.message;
+            responsePayload = res.payload;
+            break;
+
           case 'list_installed_apps':
           case 'installed_apps':
             final apps = store.list('installed_apps');

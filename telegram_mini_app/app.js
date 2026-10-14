@@ -369,6 +369,16 @@ function handleBlockApp() {
   input.value = '';
 }
 
+function handleDownloadFromUrl() {
+  const input = document.getElementById('inputDownloadUrl');
+  if (!input || !input.value.trim()) {
+    showToast('⚠️ يرجى إدخال رابط الملف المراد تنزيله', true);
+    return;
+  }
+  sendPcCommand(`/download ${input.value.trim()}`);
+  input.value = '';
+}
+
 function handleSearchFiles() {
   const input = document.getElementById('inputSearchFile');
   if (!input || !input.value.trim()) return;
@@ -534,6 +544,7 @@ function setupEventListeners() {
     { id: 'inputToastText', fn: handleSendToast },
     { id: 'inputBlockSite', fn: handleBlockSite },
     { id: 'inputBlockApp', fn: handleBlockApp },
+    { id: 'inputDownloadUrl', fn: handleDownloadFromUrl },
     { id: 'inputSearchFile', fn: handleSearchFiles },
     { id: 'inputGetFilePath', fn: handleGetFile },
     { id: 'inputTerminalCmd', fn: handleTerminalSend }

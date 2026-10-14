@@ -688,6 +688,21 @@ class TelegramCommandService {
       return;
     }
 
+    if (data.startsWith('dl_url:')) {
+      final url = data.substring('dl_url:'.length);
+      await _handleControlCommand('download $url', chatId: chatId, replyToMessageId: messageId);
+      return;
+    }
+    if (data.startsWith('cloud_upload:')) {
+      final path = data.substring('cloud_upload:'.length);
+      await _handleControlCommand('cloud_upload $path', chatId: chatId, replyToMessageId: messageId);
+      return;
+    }
+    if (data.startsWith('copy_clip:')) {
+      final text = data.substring('copy_clip:'.length);
+      await _handleExecutableText('copy $text', chatId: chatId, replyToMessageId: messageId);
+      return;
+    }
     if (data.startsWith('exec_open:')) {
       final path = data.substring('exec_open:'.length);
       await _handleExecutableText('open $path', chatId: chatId, replyToMessageId: messageId);
@@ -1112,11 +1127,137 @@ class TelegramCommandService {
       );
       final res = await executor.windowsControl
           .downloadRemoteFile(url, targetFolder: target);
+      if (res.success && res.payload['SavedPath'] != null) {
+        final savedPath = res.payload['SavedPath'].toString();
+        final fileName = res.payload['FileName']?.toString() ?? 'ملف محمل';
+        final sizeBytes = res.payload['Size'] is num
+            ? (res.payload['Size'] as num).toInt()
+            : 0;
+        final sizeStr = sizeBytes > 0 ? _formatBytes(sizeBytes) : '';
+
+        await telegram.sendMessage(
+          '✅ <b>تم تنزيل الملف بنجاح على الكمبيوتر!</b>\n\n'
+          '📁 <b>الاسم:</b> <code>$fileName</code>\n'
+          '📍 <b>المسار:</b> <code>$savedPath</code>'
+          '${sizeStr.isNotEmpty ? '\n📦 <b>الحجم:</b> $sizeStr' : ''}\n\n'
+          'اختر الإجراء المطلوب تطبيقه على هذا الملف فوراً:',
+          chatId: chatId,
+          replyMarkup: {
+            'inline_keyboard': [
+              [
+                {'text': '📂 فتح الملف بالكمبيوتر', 'callback_data': 'exec_open:$savedPath'},
+                {'text': '⬇️ إرسال لـ Telegram', 'callback_data': 'get_file:$savedPath'},
+              ],
+              [
+                {'text': '🛡️ حماية وقفل الملف', 'callback_data': 'lock_path:$savedPath'},
+                {'text': '☁️ رفع لرابط سحابي', 'callback_data': 'cloud_upload:$savedPath'},
+              ],
+              [
+                {'text': '🗑️ حذف الملف', 'callback_data': 'delete_file:$savedPath'},
+                {'text': '🔙 القائمة الرئيسية', 'callback_data': 'menu_main'},
+              ],
+            ],
+          },
+        );
+      } else {
+        await telegram.sendMessage(
+          '❌ <b>فشل التحميل:</b> ${res.message}',
+          chatId: chatId,
+          replyToMessageId: replyToMessageId,
+        );
+      }
+      return true;
+    }
+
+    if ((lower.startsWith('http://') || lower.startsWith('https://')) &&
+        !lower.contains(' ') &&
+        !lower.startsWith('https://t.me/')) {
+      final url = text.trim();
+      final uri = Uri.tryParse(url);
+      final fileName = uri != null && uri.pathSegments.isNotEmpty
+          ? uri.pathSegments.last
+          : 'ملف';
+      await telegram.sendMessage(
+        '🔗 <b>تم استلام رابط ملف:</b>\n<code>$url</code>\n\n'
+        'اختر الإجراء المطلوب تنفيذه على الكمبيوتر فوراً:',
+        chatId: chatId,
+        replyToMessageId: replyToMessageId,
+        replyMarkup: {
+          'inline_keyboard': [
+            [
+              {'text': '📥 تنزيل الملف على الكمبيوتر فوراً', 'callback_data': 'dl_url:$url'},
+              {'text': '🌐 فتح الرابط في المتصفح', 'callback_data': 'exec_open:$url'},
+            ],
+            [
+              {'text': '🚫 حظر هذا الموقع', 'callback_data': 'block_site:${uri?.host ?? url}'},
+              {'text': '🔙 إلغاء', 'callback_data': 'menu_main'},
+            ],
+          ],
+        },
+      );
+      return true;
+    }
+
+    if (lower == '/cleanup' ||
+        lower == 'cleanup' ||
+        lower == '/clean_temp' ||
+        lower == 'clean temp' ||
+        lower == 'تنظيف الجهاز' ||
+        lower == 'تنظيف') {
+      await telegram.sendMessage(
+        '🧹 <b>جاري تنظيف الملفات المؤقتة وسلة المحذوفات...</b>',
+        chatId: chatId,
+        replyToMessageId: replyToMessageId,
+      );
+      final res = await executor.windowsControl.cleanupSystemTempFiles();
       await telegram.sendMessage(
         res.success
             ? '✅ <b>${res.message}</b>'
-            : '❌ <b>فشل التحميل:</b> ${res.message}',
+            : '⚠️ <b>${res.message}</b>',
         chatId: chatId,
+        replyMarkup: _dashboardInlineMenu(),
+      );
+      return true;
+    }
+
+    if (lower == '/tasks' ||
+        lower == 'tasks' ||
+        lower == '/processes' ||
+        lower == 'processes' ||
+        lower == 'المهام' ||
+        lower == 'العمليات') {
+      final res = await executor.windowsControl.getRunningProcessesReport();
+      final items = (res.payload['items'] as List?) ?? const [];
+      final lines = items.take(12).map((item) {
+        if (item is! Map) return item.toString();
+        final name = item['Name'] ?? 'proc';
+        final pid = item['Id'] ?? '';
+        final mem = item['MemMB'] ?? 0;
+        final title = item['Title'] ?? '';
+        return '▫️ <b>$name</b> (PID: <code>$pid</code>) • RAM: ${mem}MB ${title.toString().isNotEmpty ? '\n   └ $title' : ''}';
+      }).join('\n');
+      final buttons = <List<Map<String, String>>>[];
+      for (final item in items.take(4)) {
+        if (item is! Map) continue;
+        final name = (item['Name'] ?? '').toString();
+        final pid = (item['Id'] ?? '').toString();
+        if (name.isNotEmpty) {
+          buttons.add([
+            {'text': '❌ إنهاء $name (PID: $pid)', 'callback_data': 'close_app:$pid'},
+            {'text': '🚫 حظر $name', 'callback_data': 'block_app:$name'},
+          ]);
+        }
+      }
+      buttons.add([
+        {'text': '🔄 تحديث العمليات', 'callback_data': 'tasks'},
+        {'text': '🔙 القائمة الرئيسية', 'callback_data': 'menu_main'},
+      ]);
+
+      await telegram.sendMessage(
+        '📊 <b>العمليات الأكثر استهلاكاً للذاكرة والمعالج:</b>\n\n$lines',
+        chatId: chatId,
+        replyToMessageId: replyToMessageId,
+        replyMarkup: {'inline_keyboard': buttons},
       );
       return true;
     }
@@ -1248,7 +1389,11 @@ class TelegramCommandService {
     }
 
     if (lower.startsWith('/cloud_upload ') ||
-        lower.startsWith('/upload ')) {
+        lower.startsWith('cloud_upload ') ||
+        lower.startsWith('/upload ') ||
+        lower.startsWith('upload ') ||
+        lower.startsWith('رفع ') ||
+        lower.startsWith('رفع_ملف ')) {
       final filePath = text.substring(text.indexOf(' ') + 1).trim();
       await telegram.sendMessage(
         '⏳ <b>جاري رفع الملف للسحابة في الخلفية...</b>\n📁 الملف: <code>$filePath</code>',
@@ -1256,12 +1401,34 @@ class TelegramCommandService {
         replyToMessageId: replyToMessageId,
       );
       final res = await executor.windowsControl.uploadToFastCloud(filePath);
-      await telegram.sendMessage(
-        res.success
-            ? '☁️ <b>${res.message}</b>'
-            : '❌ <b>فشل الرفع:</b> ${res.message}',
-        chatId: chatId,
-      );
+      if (res.success && res.payload['DirectUrl'] != null) {
+        final directUrl = res.payload['DirectUrl'].toString();
+        final fileName = res.payload['FileName']?.toString() ?? 'ملف';
+        await telegram.sendMessage(
+          '☁️ <b>تم رفع الملف بنجاح!</b>\n\n'
+          '📁 <b>الملف:</b> <code>$fileName</code>\n'
+          '🔗 <b>رابط التحميل المباشر:</b>\n<code>$directUrl</code>',
+          chatId: chatId,
+          replyMarkup: {
+            'inline_keyboard': [
+              [
+                {'text': '🌐 فتح الرابط بالمتصفح', 'callback_data': 'exec_open:$directUrl'},
+                {'text': '📋 نسخ الرابط للحافظة', 'callback_data': 'copy_clip:$directUrl'},
+              ],
+              [
+                {'text': '🔙 القائمة الرئيسية', 'callback_data': 'menu_main'},
+              ],
+            ],
+          },
+        );
+      } else {
+        await telegram.sendMessage(
+          res.success
+              ? '☁️ <b>${res.message}</b>'
+              : '❌ <b>فشل الرفع:</b> ${res.message}',
+          chatId: chatId,
+        );
+      }
       return true;
     }
 
@@ -1365,6 +1532,38 @@ class TelegramCommandService {
         lower == 'ملخص' ||
         lower == 'تقرير') {
       return const _ParsedTelegramCommand('smart_insights');
+    }
+
+    if (lower == 'open_items' ||
+        lower == 'open items' ||
+        lower == 'open_files' ||
+        lower == 'open files' ||
+        lower == 'open_sites' ||
+        lower == 'open sites' ||
+        lower == 'open_tabs' ||
+        lower == 'open tabs' ||
+        lower == 'tabs' ||
+        lower == 'المواقع المفتوحة' ||
+        lower == 'الملفات المفتوحة' ||
+        lower == 'التبويبات المفتوحة' ||
+        lower == 'المستندات المفتوحة') {
+      return const _ParsedTelegramCommand('list_open_items');
+    }
+
+    if (lower == 'cleanup' ||
+        lower == 'clean_temp' ||
+        lower == 'clean' ||
+        lower == 'تنظيف' ||
+        lower == 'تنظيف الجهاز') {
+      return const _ParsedTelegramCommand('cleanup_temp');
+    }
+
+    if (lower == 'tasks' ||
+        lower == 'processes' ||
+        lower == 'procs' ||
+        lower == 'المهام' ||
+        lower == 'العمليات') {
+      return const _ParsedTelegramCommand('list_processes');
     }
 
     if (lower == 'qr' || lower == 'رمز الربط' || lower == 'كود الربط') {
@@ -2014,6 +2213,77 @@ class TelegramCommandService {
       return lines.isNotEmpty ? lines : 'لا توجد قواعد حماية مسارات حالياً.';
     }
 
+    // Comprehensive Open Items (Files, Tabs, Documents, Apps)
+    if (type == 'list_open_items' ||
+        type == 'open_items' ||
+        type == 'list_open_files' ||
+        type == 'open_files' ||
+        type == 'list_open_sites' ||
+        type == 'open_sites') {
+      final tabs = (payload['browserTabs'] as List?) ?? const [];
+      final docs = (payload['documents'] as List?) ?? const [];
+      final folders = (payload['folders'] as List?) ?? const [];
+      final apps = (payload['apps'] as List?) ?? const [];
+
+      final buffer = StringBuffer();
+      buffer.writeln('📋 <b>تقرير تفصيلي بكافة الملفات والمواقع المفتوحة:</b>\n');
+
+      if (tabs.isNotEmpty) {
+        buffer.writeln('🌐 <b>المواقع والتبويبات النشطة (${tabs.length}):</b>');
+        for (final tab in tabs.take(8)) {
+          final title = (tab['Title'] ?? '').toString();
+          final browser = (tab['Browser'] ?? '').toString();
+          buffer.writeln('  ▫️ <b>$browser:</b> $title');
+        }
+        buffer.writeln('');
+      }
+
+      if (docs.isNotEmpty) {
+        buffer.writeln('📄 <b>المستندات والملفات المفتوحة (${docs.length}):</b>');
+        for (final doc in docs.take(8)) {
+          final title = (doc['Title'] ?? '').toString();
+          final path = (doc['Path'] ?? '').toString();
+          buffer.writeln('  ▫️ <b>$title</b>${path.isNotEmpty ? '\n     <code>$path</code>' : ''}');
+        }
+        buffer.writeln('');
+      }
+
+      if (folders.isNotEmpty) {
+        buffer.writeln('📁 <b>مجلدات Explorer المفتوحة (${folders.length}):</b>');
+        for (final f in folders.take(6)) {
+          final name = (f['Name'] ?? '').toString();
+          final path = (f['Path'] ?? '').toString();
+          buffer.writeln('  ▫️ 📁 <b>$name</b>\n     <code>$path</code>');
+        }
+        buffer.writeln('');
+      }
+
+      if (apps.isNotEmpty) {
+        buffer.writeln('🖥️ <b>التطبيقات والنوافذ الأخرى (${apps.length}):</b>');
+        for (final a in apps.take(6)) {
+          final name = (a['ProcessName'] ?? '').toString();
+          final title = (a['Title'] ?? '').toString();
+          buffer.writeln('  ▫️ <b>$name:</b> $title');
+        }
+      }
+
+      return buffer.toString().trim();
+    }
+
+    // Process List
+    if (type == 'list_processes' || type == 'top_processes') {
+      final items = (payload['items'] as List?) ?? const [];
+      final lines = items.take(15).map((item) {
+        if (item is! Map) return item.toString();
+        final name = item['Name'] ?? 'proc';
+        final pid = item['Id'] ?? '';
+        final mem = item['MemMB'] ?? 0;
+        final title = item['Title'] ?? '';
+        return '▫️ <b>$name</b> (PID: <code>$pid</code>) • RAM: ${mem}MB ${title.toString().isNotEmpty ? '\n   └ $title' : ''}';
+      }).join('\n');
+      return '📊 <b>العمليات الأكثر استهلاكاً للذاكرة:</b>\n\n$lines';
+    }
+
     // Smart Insights
     if (type == 'smart_insights') {
       final open = payload['openAppsCount'] ?? 0;
@@ -2033,6 +2303,58 @@ class TelegramCommandService {
   }
 
   Map<String, dynamic>? _resultInlineButtons(String type, Map<String, dynamic> payload) {
+    if (type == 'list_open_items' ||
+        type == 'open_items' ||
+        type == 'list_open_files' ||
+        type == 'open_files' ||
+        type == 'list_open_sites' ||
+        type == 'open_sites') {
+      final buttons = <List<Map<String, String>>>[];
+      final tabs = (payload['browserTabs'] as List?) ?? const [];
+      final docs = (payload['documents'] as List?) ?? const [];
+      final folders = (payload['folders'] as List?) ?? const [];
+
+      for (final tab in tabs.take(3)) {
+        if (tab is! Map) continue;
+        final title = (tab['Title'] ?? '').toString();
+        final domain = _cleanTargetString(title);
+        if (domain.isNotEmpty) {
+          buttons.add([
+            {'text': '🚫 حظر موقع: $domain', 'callback_data': 'block_site:$domain'},
+          ]);
+        }
+      }
+
+      for (final doc in docs.take(2)) {
+        if (doc is! Map) continue;
+        final title = (doc['Title'] ?? '').toString();
+        final path = (doc['Path'] ?? '').toString();
+        if (path.isNotEmpty) {
+          buttons.add([
+            {'text': '⬇️ تحميل ($title)', 'callback_data': 'get_file:$path'},
+            {'text': '🛡️ قفل المسار', 'callback_data': 'lock_path:$path'},
+          ]);
+        }
+      }
+
+      for (final f in folders.take(2)) {
+        if (f is! Map) continue;
+        final name = (f['Name'] ?? '').toString();
+        final path = (f['Path'] ?? '').toString();
+        if (path.isNotEmpty) {
+          buttons.add([
+            {'text': '📁 تصفح: $name', 'callback_data': 'browse_folder:$path'},
+            {'text': '🛡️ قفل المجلد', 'callback_data': 'lock_path:$path'},
+          ]);
+        }
+      }
+
+      buttons.add([
+        {'text': '🔄 تحديث القائمة الشاملة', 'callback_data': 'open_items'},
+        {'text': '🔙 القائمة الرئيسية', 'callback_data': 'menu_main'},
+      ]);
+      return {'inline_keyboard': buttons};
+    }
     if (type == 'browse_path' || type == 'search_files') {
       final items = (payload['items'] as List?) ?? const [];
       final fileButtons = <List<Map<String, String>>>[];
@@ -2281,6 +2603,12 @@ class TelegramCommandService {
         return 'bluetooth devices';
       case 'open_apps':
         return 'open_apps';
+      case 'open_items':
+        return 'open_items';
+      case 'cleanup':
+        return 'cleanup';
+      case 'tasks':
+        return 'tasks';
       case 'installed_apps':
         return 'installed_apps';
       case 'blocked_items':
@@ -2436,9 +2764,11 @@ class TelegramCommandService {
       'inline_keyboard': [
         [
           button('👁️ التطبيقات المفتوحة الحالية', 'open_apps'),
+          button('📑 كافة الملفات والمواقع المفتوحة', 'open_items'),
         ],
         [
-          button('📦 البرامج المثبتة على الكمبيوتر', 'installed_apps'),
+          button('📊 العمليات والمهام (Tasks)', 'tasks'),
+          button('📦 البرامج المثبتة', 'installed_apps'),
         ],
         [
           button('🚫 قائمة العناصر والمواقع الممنوعة', 'blocked_items'),
@@ -2610,11 +2940,15 @@ class TelegramCommandService {
       'inline_keyboard': [
         [
           button('📊 التحليلات الذكية والملخص', 'smart_insights'),
-          button('📊 صحة ومواصفات الجهاز', 'health'),
+          button('❤️ صحة ومواصفات الجهاز', 'health'),
         ],
         [
           button('📜 طلب سجلات النشاط', 'logs'),
+          button('🧹 تنظيف وتسريع الجهاز', 'cleanup'),
+        ],
+        [
           button('📸 التقاط صورة الشاشة', 'screenshot'),
+          button('📷 كاميرا الويب', 'webcam'),
         ],
         [
           button('🔙 العودة للوحة الرئيسية', 'menu_main'),
@@ -2654,36 +2988,39 @@ class TelegramCommandService {
 
   String _helpText() {
     return '📖 <b>الدليل الشامل للتحكم بالكمبيوتر عبر سحابة Telegram:</b>\n\n'
-        '📁 <b>الملفات وتبادل البيانات:</b>\n'
-        '• أرسل أي ملف للمحادثة وسيتم حفظه في <code>Downloads</code> بالكمبيوتر تلقائياً.\n'
+        '📁 <b>الملفات، التنزيل والرفع السحابي:</b>\n'
+        '• أرسل أي رابط ملف أو استخدم <code>/download &lt;رابط&gt;</code> لتنزيله فوراً على الكمبيوتر مع أزرار تفاعلية.\n'
+        '• <code>/upload C:\\path\\file.ext</code>: رفع ملف إلى رابط سحابي مباشر.\n'
+        '• <code>/upload_to C:\\path\\file.ext &lt;رابط_الرفع&gt;</code>: رفع ملف إلى رابط مخصص أو Webhook.\n'
         '• <code>/get C:\\path\\file.ext</code>: إرسال أي ملف من الكمبيوتر إلى Telegram.\n'
         '• <code>/search تقرير</code>: بحث عن ملفات في الكمبيوتر وتحميلها.\n'
         '• <code>/open C:\\path\\file.ext</code>: فتح ملف على شاشة الكمبيوتر.\n'
         '• <code>/delete C:\\path\\file.ext</code>: حذف ملف.\n'
         '• <code>/browse roots</code>: استعراض أقراص وملفات الكمبيوتر.\n\n'
-        '👁️ <b>البرامج والتطبيقات:</b>\n'
+        '👁️ <b>البرامج، التبويبات والمواقع:</b>\n'
+        '• <code>/open_items</code>: تقرير تفصيلي بكافة الملفات، المجلدات والمواقع المفتوحة مع أزرار التحكم.\n'
         '• <code>/apps</code>: عرض البرامج المفتوحة ونوافذ المتصفح.\n'
-        '• <code>/close chrome.exe</code>: إغلاق برنامج.\n'
+        '• <code>/tasks</code>: عرض العمليات الأكثر استهلاكاً للذاكرة والمعالج مع خيار الإغلاق.\n'
+        '• <code>/close chrome.exe</code>: إغلاق برنامج أو نافذة.\n'
         '• <code>/blockapp game.exe</code>: منع تشغيل برنامج.\n'
         '• <code>/allowapp game.exe</code>: السماح لبرنامج.\n'
         '• <code>/blocksite youtube.com</code>: حظر موقع.\n'
         '• <code>/allowsite youtube.com</code>: السماح لموقع.\n'
         '• <code>/installed</code>: عرض البرامج المثبتة.\n\n'
-        '🔒 <b>التحكم والطاقة:</b>\n'
+        '🔒 <b>التحكم، الصحة والطاقة:</b>\n'
         '• <code>status</code>: فحص الاتصال.\n'
         '• <code>screenshot</code>: لقطة شاشة فورية.\n'
+        '• <code>webcam</code>: لقطة من كاميرا الويب.\n'
+        '• <code>mic 10</code>: تسجيل صوتي من ميكروفون الكمبيوتر.\n'
         '• <code>health</code>: صحة الجهاز (CPU, RAM, Disks).\n'
-        '• <code>lock</code>: قفل شاشة الكمبيوتر.\n'
-        '• <code>lock 30</code>: قفل لمدة 30 دقيقة.\n'
-        '• <code>unlock</code>: إلغاء القفل.\n'
+        '• <code>cleanup</code>: تنظيف الملفات المؤقتة وسلة المحذوفات.\n'
+        '• <code>lock</code> | <code>lock 30</code> | <code>unlock</code>\n'
         '• <code>emergency</code>: وضع الطوارئ الشامل.\n'
-        '• <code>shutdown</code>: إغلاق الكمبيوتر (مع زر تأكيد).\n'
-        '• <code>restart</code>: إعادة التشغيل (مع زر تأكيد).\n'
+        '• <code>shutdown</code> | <code>restart</code>\n'
         '• <code>wifi on/off</code> | <code>internet on/off</code> | <code>bt on/off</code>\n'
         '• <code>volume 50</code> | <code>volup</code> | <code>voldown</code> | <code>mute</code>\n'
         '• <code>msg مرحباً</code>: إظهار رسالة منبثقة على شاشة الكمبيوتر.\n'
         '• <code>mode study/work/kids/protection</code>: الأوضاع الذكية.\n'
-        '• <code>privacy on/off</code>: وضع الخصوصية.\n'
         '• <code>undo</code>: التراجع عن آخر أمر.';
   }
 }

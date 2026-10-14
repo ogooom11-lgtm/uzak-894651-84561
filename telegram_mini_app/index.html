@@ -275,8 +275,10 @@
 
         <!-- Quick Access to Blocked & Path Rules -->
         <div class="card mt-4">
-          <span class="card-section-title">🛡️ قواعد الحماية الشاملة</span>
+          <span class="card-section-title">🛡️ قواعد الحماية الشاملة والمهام</span>
           <div class="grid grid-2 mt-2">
+            <button class="btn btn-secondary" onclick="sendPcCommand('/open_items')">📑 كافة الملفات والمواقع</button>
+            <button class="btn btn-secondary" onclick="sendPcCommand('/tasks')">📊 إدارة العمليات (Tasks)</button>
             <button class="btn btn-secondary" onclick="sendPcCommand('/blocked')">🚫 قائمة الممنوعات</button>
             <button class="btn btn-secondary" onclick="sendPcCommand('/rules')">🛡️ قواعد حماية المسارات</button>
             <button class="btn btn-secondary" onclick="sendPcCommand('/installed')">📦 البرامج المثبتة</button>
@@ -289,8 +291,18 @@
       <section id="tab-files" class="tab-pane">
         <div class="section-title">📁 متصفح الملفات والرفع السحابي</div>
 
-        <!-- Quick Folders -->
+        <!-- Download From URL Direct Card -->
         <div class="card">
+          <span class="card-section-title">📥 تنزيل ملف من رابط مباشر إلى الكمبيوتر</span>
+          <p class="text-muted text-sm mt-1">تنزيل أي ملف من الإنترنت فوراً إلى مجلد التنزيلات (Downloads) بالكمبيوتر.</p>
+          <div class="input-group mt-2">
+            <input type="text" id="inputDownloadUrl" placeholder="https://example.com/file.zip" class="form-input font-mono">
+            <button class="btn btn-primary" onclick="handleDownloadFromUrl()">تنزيل 📥</button>
+          </div>
+        </div>
+
+        <!-- Quick Folders -->
+        <div class="card mt-4">
           <span class="card-section-title">📂 المجلدات الرئيسية السريعة</span>
           <div class="grid grid-2 mt-2">
             <button class="btn btn-secondary" onclick="sendPcCommand('/browse downloads')">📥 مجلد التنزيلات</button>
@@ -348,6 +360,8 @@
             <button class="btn btn-secondary" onclick="sendPcCommand('/insights')">📊 التحليلات الذكية</button>
             <button class="btn btn-secondary" onclick="sendPcCommand('/health')">❤️ فحص صحة الجهاز</button>
             <button class="btn btn-secondary" onclick="sendPcCommand('/logs')">📜 طلب سجل النشاط</button>
+            <button class="btn btn-secondary" onclick="sendPcCommand('/cleanup')">🧹 تنظيف وتسريع الجهاز</button>
+            <button class="btn btn-secondary" onclick="sendPcCommand('/tasks')">📊 تقرير العمليات</button>
             <button class="btn btn-secondary" onclick="sendPcCommand('/clip')">📋 جلب الحافظة</button>
           </div>
         </div>

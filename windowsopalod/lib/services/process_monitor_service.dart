@@ -128,4 +128,118 @@ $items | ConvertTo-Json -Compress -Depth 3
     if (p.contains('steam')) return 'steam';
     return 'default';
   }
+
+  Future<Map<String, dynamic>> getDetailedOpenItems() async {
+    const script = r'''
+$ErrorActionPreference = 'SilentlyContinue'
+
+$openFolders = @()
+try {
+    $shell = New-Object -ComObject Shell.Application
+    $windows = $shell.Windows()
+    foreach ($win in $windows) {
+        try {
+            $name = $win.LocationName
+            $url = $win.LocationURL
+            if ($url -and $url.StartsWith("file:///")) {
+                $path = [System.Uri]::UnescapeDataString($url.Substring(8).Replace('/', '\'))
+                $openFolders += [PSCustomObject]@{
+                    Name = if ($name) { $name } else { [System.IO.Path]::GetFileName($path) }
+                    Path = $path
+                    Type = 'folder'
+                }
+            }
+        } catch {}
+    }
+} catch {}
+
+$openWindows = @()
+$browserTabs = @()
+$openDocs = @()
+
+Get-Process | Where-Object { $_.MainWindowHandle -ne 0 -and $_.MainWindowTitle } | ForEach-Object {
+    try {
+        $pName = $_.ProcessName
+        $pId = $_.Id
+        $t = ($_.MainWindowTitle).ToString().Trim()
+        $path = ''
+        try { $path = $_.Path } catch {}
+
+        if ($t.Length -gt 0) {
+            $lowP = $pName.ToLower()
+            $isBrowser = $lowP -match "chrome|msedge|firefox|brave|opera|vivaldi|safari"
+            $isDoc = $lowP -match "winword|excel|powerpnt|notepad|acrobat|acrord|pdf|code|devenv"
+
+            if ($isBrowser) {
+                $browserTabs += [PSCustomObject]@{
+                    ProcessName = $pName
+                    ProcessId = $pId
+                    Title = $t
+                    Browser = $pName
+                    Type = 'website'
+                }
+            } elseif ($isDoc) {
+                $openDocs += [PSCustomObject]@{
+                    ProcessName = $pName
+                    ProcessId = $pId
+                    Title = $t
+                    Path = $path
+                    Type = 'document'
+                }
+            } else {
+                $openWindows += [PSCustomObject]@{
+                    ProcessName = $pName
+                    ProcessId = $pId
+                    Title = $t
+                    Path = $path
+                    Type = 'app'
+                }
+            }
+        }
+    } catch {}
+}
+
+[PSCustomObject]@{
+    Folders = $openFolders
+    BrowserTabs = $browserTabs
+    Documents = $openDocs
+    Apps = $openWindows
+} | ConvertTo-Json -Compress -Depth 4
+''';
+    final result = await SafeProcessRunner.powershell(
+      script,
+      timeout: const Duration(seconds: 10),
+    );
+    if (result.exitCode != 0) {
+      return {'folders': [], 'browserTabs': [], 'documents': [], 'apps': []};
+    }
+    final text = result.stdout.toString().trim();
+    if (text.isEmpty) {
+      return {'folders': [], 'browserTabs': [], 'documents': [], 'apps': []};
+    }
+    try {
+      final decoded = jsonDecode(text);
+      if (decoded is Map) {
+        return {
+          'folders': _toList(decoded['Folders']),
+          'browserTabs': _toList(decoded['BrowserTabs']),
+          'documents': _toList(decoded['Documents']),
+          'apps': _toList(decoded['Apps']),
+        };
+      }
+    } catch (_) {}
+    return {'folders': [], 'browserTabs': [], 'documents': [], 'apps': []};
+  }
+
+  List<Map<String, dynamic>> _toList(dynamic val) {
+    if (val == null) return [];
+    if (val is List) {
+      return val
+          .whereType<Map>()
+          .map((e) => e.cast<String, dynamic>())
+          .toList();
+    }
+    if (val is Map) return [val.cast<String, dynamic>()];
+    return [];
+  }
 }
