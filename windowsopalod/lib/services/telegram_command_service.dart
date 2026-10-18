@@ -723,6 +723,14 @@ class TelegramCommandService {
       await _handleExecutableText('protect $path', chatId: chatId, replyToMessageId: messageId);
       return;
     }
+    if (data.startsWith('unprotect_path:') || data.startsWith('unlock_path:') || data.startsWith('unlock_file:')) {
+      final prefix = data.startsWith('unprotect_path:')
+          ? 'unprotect_path:'
+          : (data.startsWith('unlock_path:') ? 'unlock_path:' : 'unlock_file:');
+      final path = data.substring(prefix.length);
+      await _handleExecutableText('unprotect $path', chatId: chatId, replyToMessageId: messageId);
+      return;
+    }
     if (data.startsWith('delete_file:')) {
       final path = data.substring('delete_file:'.length);
       await _handleExecutableText('delete $path', chatId: chatId, replyToMessageId: messageId);
@@ -1992,35 +2000,65 @@ class TelegramCommandService {
           : normalized.substring('حذف '.length).trim();
       return _ParsedTelegramCommand('delete_path', {'path': path});
     }
-    if (lower.startsWith('protect ') ||
-        lower.startsWith('lock_path ') ||
-        lower.startsWith('lockpath ') ||
-        lower.startsWith('حماية ') ||
-        lower.startsWith('قفل مسار ')) {
-      final prefix = [
-        'protect ',
-        'lock_path ',
-        'lockpath ',
-        'حماية ',
-        'قفل مسار ',
-      ].firstWhere((p) => lower.startsWith(p));
-      final path = normalized.substring(prefix.length).trim();
-      return _ParsedTelegramCommand('protect_path', {'path': path});
+    const protectPrefixes = [
+      'protect ',
+      'lock_path ',
+      'lockpath ',
+      'lock_file ',
+      'lockfile ',
+      'lock_folder ',
+      'lockfolder ',
+      'lock ',
+      'قفل ملف ',
+      'قفل_ملف ',
+      'قفل مجلد ',
+      'قفل_مجلد ',
+      'قفل مسار ',
+      'قفل_مسار ',
+      'حماية مسار ',
+      'حماية مجلد ',
+      'حماية ملف ',
+      'حماية ',
+      'قفل ',
+    ];
+    for (final prefix in protectPrefixes) {
+      if (lower.startsWith(prefix)) {
+        final path = normalized.substring(prefix.length).trim();
+        return _ParsedTelegramCommand('protect_path', {'path': path});
+      }
     }
-    if (lower.startsWith('unprotect ') ||
-        lower.startsWith('unlock_path ') ||
-        lower.startsWith('unlockpath ') ||
-        lower.startsWith('الغاء حماية ') ||
-        lower.startsWith('إلغاء حماية ')) {
-      final prefix = [
-        'unprotect ',
-        'unlock_path ',
-        'unlockpath ',
-        'الغاء حماية ',
-        'إلغاء حماية ',
-      ].firstWhere((p) => lower.startsWith(p));
-      final path = normalized.substring(prefix.length).trim();
-      return _ParsedTelegramCommand('unprotect_path', {'path': path});
+
+    const unprotectPrefixes = [
+      'unprotect ',
+      'unlock_path ',
+      'unlockpath ',
+      'unlock_file ',
+      'unlockfile ',
+      'unlock_folder ',
+      'unlockfolder ',
+      'unlock ',
+      'فك قفل ملف ',
+      'فك قفل مجلد ',
+      'فك قفل مسار ',
+      'فك قفل ',
+      'فك_قفل ',
+      'الغاء حماية ملف ',
+      'إلغاء حماية ملف ',
+      'الغاء حماية مجلد ',
+      'إلغاء حماية مجلد ',
+      'الغاء حماية مسار ',
+      'إلغاء حماية مسار ',
+      'الغاء حماية ',
+      'إلغاء حماية ',
+      'سماح مسار ',
+      'سماح ملف ',
+      'سماح مجلد ',
+    ];
+    for (final prefix in unprotectPrefixes) {
+      if (lower.startsWith(prefix)) {
+        final path = normalized.substring(prefix.length).trim();
+        return _ParsedTelegramCommand('unprotect_path', {'path': path});
+      }
     }
     if (lower.startsWith('hide ') || lower.startsWith('إخفاء ')) {
       final path = lower.startsWith('hide ')
@@ -2469,6 +2507,28 @@ class TelegramCommandService {
       }
       buttons.add([
         {'text': '🔄 تحديث', 'callback_data': 'blocked_items'},
+        {'text': '🔙 القائمة الرئيسية', 'callback_data': 'menu_main'},
+      ]);
+      return {'inline_keyboard': buttons};
+    }
+
+    if (type == 'list_path_rules' || type == 'path_rules') {
+      final rules = (payload['rules'] as List?) ?? const [];
+      final buttons = <List<Map<String, String>>>[];
+      for (final rule in rules.take(6)) {
+        if (rule is! Map) continue;
+        final path = (rule['path'] ?? '').toString();
+        if (path.isEmpty) continue;
+        final fileName = path.replaceAll('/', r'\').split(r'\').last;
+        buttons.add([
+          {
+            'text': '🔓 إلغاء قفل: $fileName',
+            'callback_data': 'unprotect_path:$path',
+          },
+        ]);
+      }
+      buttons.add([
+        {'text': '🔄 تحديث', 'callback_data': 'path_rules'},
         {'text': '🔙 القائمة الرئيسية', 'callback_data': 'menu_main'},
       ]);
       return {'inline_keyboard': buttons};

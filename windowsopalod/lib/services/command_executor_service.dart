@@ -1376,17 +1376,22 @@ class CommandExecutorService {
 
           case 'protect_path':
           case 'lock_path':
+          case 'lock_file':
+          case 'lock_folder':
           case 'add_path_rule':
             final path = (command.payload['path'] ?? '').toString();
             if (path.isEmpty) throw StateError('path مطلوب');
             await _upsertPathRule(command.payload);
             success = true;
-            message = 'تمت إضافة وتفعيل قاعدة حماية المسار بنجاح: $path';
+            message = 'تمت إضافة وتفعيل قاعدة حماية وقفل المسار بنجاح: $path';
             responsePayload = {'path': path};
             break;
 
           case 'remove_path_rule':
           case 'unprotect_path':
+          case 'unlock_path':
+          case 'unlock_file':
+          case 'unlock_folder':
             final path = (command.payload['path'] ?? command.payload['id'] ?? '').toString();
             if (path.isEmpty) throw StateError('path مطلوب');
             final rule = _matchingPathRule(path);
@@ -1396,7 +1401,7 @@ class CommandExecutorService {
               await pathRules.removeRule(path);
             }
             success = true;
-            message = 'تم إلغاء حماية المسار: $path';
+            message = 'تم إلغاء قفل وحماية المسار بنجاح: $path';
             responsePayload = {'path': path};
             break;
 
@@ -1874,11 +1879,14 @@ class CommandExecutorService {
   }
 
   PathRule? _matchingPathRule(String path) {
-    final normalized = path.replaceAll('/', r'\').toLowerCase();
+    final normalized = path.replaceAll('/', r'\').toLowerCase().trim();
     for (final rule in pathRules.getRules()) {
-      final protected = rule.path.replaceAll('/', r'\').toLowerCase();
+      if (rule.id.toLowerCase() == normalized) return rule;
+      final protected = rule.path.replaceAll('/', r'\').toLowerCase().trim();
       final prefix = protected.endsWith(r'\') ? protected : '$protected\\';
-      if (normalized == protected || normalized.startsWith(prefix)) {
+      if (normalized == protected ||
+          normalized.startsWith(prefix) ||
+          protected.startsWith(normalized)) {
         return rule;
       }
     }

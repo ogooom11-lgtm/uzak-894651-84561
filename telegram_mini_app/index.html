@@ -175,9 +175,9 @@
 
         <!-- Siren Alarm & Remote Media / Keys -->
         <div class="card mt-4">
-          <span class="card-section-title">🚨 صافرة الإنذار ومحاكاة المفاتيح السريعة</span>
+          <span class="card-section-title">🚨 صافرة الإنذار (سماعات الكمبيوتر والمذربورد الداخلية) ومحاكاة المفاتيح</span>
           <div class="grid grid-2 mt-2">
-            <button class="btn btn-danger" onclick="sendPcCommand('/alarm 10')">🚨 إطلاق إنذار قوي (10ث)</button>
+            <button class="btn btn-danger" onclick="sendPcCommand('/alarm 10')">🚨 إطلاق إنذار بفل الكمبيوتر (10ث)</button>
             <button class="btn btn-secondary" onclick="sendPcCommand('/press %{F4}')">❌ إغلاق النافذة (Alt+F4)</button>
             <button class="btn btn-secondary" onclick="sendPcCommand('/press ^{w}')">📑 إغلاق التبويب (Ctrl+W)</button>
             <button class="btn btn-secondary" onclick="sendPcCommand('/press {SPACE}')">⏯️ تشغيل/إيقاف مؤقت (Space)</button>
@@ -253,23 +253,36 @@
           </div>
         </div>
 
-        <!-- Block Websites Section -->
+        <!-- Block & Allow Websites Section -->
         <div class="card mt-4">
-          <span class="card-section-title">🌐 حظر وقفل المواقع الإلكترونية</span>
-          <p class="text-muted text-sm mt-1">حظر وصول الكمبيوتر لمواقع محددة مثل (youtube.com, facebook.com, tiktok.com)</p>
+          <span class="card-section-title">🌐 حظر وإلغاء حظر المواقع الإلكترونية</span>
+          <p class="text-muted text-sm mt-1">حظر أو السماح بالوصول لمواقع محددة مثل (youtube.com, facebook.com, tiktok.com)</p>
           <div class="input-group mt-2">
             <input type="text" id="inputBlockSite" placeholder="youtube.com" class="form-input font-mono">
             <button class="btn btn-danger" onclick="handleBlockSite()">حظر 🚫</button>
+            <button class="btn btn-outline-success" onclick="handleUnblockSite()">سماح 🔓</button>
           </div>
         </div>
 
-        <!-- Block Applications Section -->
+        <!-- Block & Allow Applications Section -->
         <div class="card mt-4">
-          <span class="card-section-title">🚫 حظر تشغيل البرامج والتطبيقات</span>
-          <p class="text-muted text-sm mt-1">منع تشغيل ملف تنفيذي مثل (chrome.exe, game.exe, telegram.exe)</p>
+          <span class="card-section-title">🚫 حظر وإلغاء منع البرامج والتطبيقات</span>
+          <p class="text-muted text-sm mt-1">منع أو السماح بتشغيل ملف تنفيذي مثل (chrome.exe, game.exe, telegram.exe)</p>
           <div class="input-group mt-2">
             <input type="text" id="inputBlockApp" placeholder="game.exe" class="form-input font-mono">
             <button class="btn btn-danger" onclick="handleBlockApp()">منع 🚫</button>
+            <button class="btn btn-outline-success" onclick="handleUnblockApp()">سماح 🔓</button>
+          </div>
+        </div>
+
+        <!-- File and Path Lock Section -->
+        <div class="card mt-4">
+          <span class="card-section-title">🛡️ قفل وفك قفل الملفات والمجلدات</span>
+          <p class="text-muted text-sm mt-1">قفل أي ملف أو مجلد حساس لحمايته ومنع فتحه أو التعديل عليه، أو فك القفل عنه</p>
+          <div class="input-group mt-2">
+            <input type="text" id="inputLockPath" placeholder="C:\Users\Admin\Documents\secret.docx" class="form-input font-mono">
+            <button class="btn btn-danger" onclick="handleLockPath()">قفل 🔒</button>
+            <button class="btn btn-outline-success" onclick="handleUnlockPath()">فك القفل 🔓</button>
           </div>
         </div>
 

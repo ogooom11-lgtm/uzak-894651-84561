@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
+
 import '../config/agent_config.dart';
 import '../models/path_rule.dart';
 import '../utils/json_file_store.dart';
@@ -55,6 +57,7 @@ class PathGuardService {
         return;
       }
 
+      // 1. Scan Explorer Folder Windows
       final windows = await _getExplorerWindows();
       await _writeExplorerPathLogs(windows);
 
@@ -80,12 +83,57 @@ class PathGuardService {
           break;
         }
       }
+
+      // 2. Scan Running Document / File Windows
+      await _scanOpenDocumentWindows(rules);
     } catch (e, st) {
       await store.appendLog('path_guard_scan_error', e.toString(), {
         'stack': st.toString(),
       });
     } finally {
       _scanInProgress = false;
+    }
+  }
+
+  Future<void> _scanOpenDocumentWindows(List<PathRule> rules) async {
+    final fileRules = rules.where((r) => r.path.contains('.')).toList();
+    if (fileRules.isEmpty) return;
+
+    for (final rule in fileRules) {
+      if (_isTemporarilyAllowed(rule.id)) continue;
+      final fileName = rule.path.replaceAll('/', r'\').split(r'\').last.trim();
+      if (fileName.isEmpty) continue;
+
+      final escaped = fileName.replaceAll("'", "''");
+      final script = '''
+\$ErrorActionPreference = 'SilentlyContinue'
+\$procs = Get-Process | Where-Object { \$_.MainWindowTitle -like "*$escaped*" }
+foreach (\$p in \$procs) {
+  try {
+    \$p.CloseMainWindow() | Out-Null
+    Start-Sleep -Milliseconds 200
+    if (-not \$p.HasExited) { \$p.Kill() }
+  } catch {}
+}
+if (\$procs) {
+  [PSCustomObject]@{ ClosedCount = \$procs.Count } | ConvertTo-Json -Compress
+}
+''';
+      try {
+        final result = await SafeProcessRunner.powershell(script, timeout: const Duration(seconds: 4));
+        if (result.stdout.toString().contains('ClosedCount')) {
+          await store.appendLog('file_guard_closed', 'تم إغلاق ملف محمي محظور', {
+            'file': fileName,
+            'path': rule.path,
+          });
+          await telegram?.sendMessage(
+            '🛡️ <b>KIOM Protection: تم إغلاق ملف محمي</b>\n'
+            'الملف: <code>$fileName</code>\n'
+            'المسار: <code>${rule.path}</code>\n'
+            'الجهاز: <b>$deviceId</b>',
+          );
+        }
+      } catch (_) {}
     }
   }
 
@@ -197,18 +245,13 @@ class PathGuardService {
       },
     );
     await telegram?.sendMessage(
-      'KIOM: محاولة فتح مسار محمي\n'
-      'المسار: $openedPath\n'
-      'نوع القفل: ${rule.lockType}\n'
-      'الجهاز: $deviceId',
+      '🛡️ <b>KIOM: محاولة فتح مسار محمي</b>\n'
+      'المسار: <code>$openedPath</code>\n'
+      'نوع القفل: <b>${rule.lockType}</b>\n'
+      'الجهاز: <b>$deviceId</b>',
     );
 
     if (rule.lockType == 'blocked') {
-      await dialogs.showWarning(
-        title: 'KIOM Protection',
-        message: 'ممنوع فتح هذا المجلد أو المسار:\n$openedPath',
-      );
-
       await _closeExplorerWindow(hwnd);
       return;
     }
@@ -237,11 +280,6 @@ class PathGuardService {
         return;
       }
 
-      await dialogs.showWarning(
-        title: 'KIOM Protection',
-        message: 'كلمة المرور غير صحيحة. سيتم إغلاق المسار.',
-      );
-
       await _closeExplorerWindow(hwnd);
       return;
     }
@@ -257,11 +295,6 @@ class PathGuardService {
         'KIOM: طلب إذن فتح مسار\n'
         'المسار: $openedPath\n'
         'افتح تطبيق الهاتف للموافقة أو الرفض.',
-      );
-
-      await dialogs.showWarning(
-        title: 'KIOM Protection',
-        message: 'هذا المسار يحتاج موافقة من الهاتف قبل فتحه:\n$openedPath',
       );
 
       await _closeExplorerWindow(hwnd);

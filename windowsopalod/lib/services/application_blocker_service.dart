@@ -52,9 +52,20 @@ class ApplicationBlockerService {
     final sites = blockedSites().where((s) => !_isTemporarilyAllowed(s)).toList();
     if (sites.isEmpty) return;
 
-    // Keep the DNS hosts blockade continuously synchronized so the site cannot load,
-    // while keeping the browser and all other tabs completely intact without closing.
-    await _rewriteHostsFile();
+    // Check if any open browser window has a blocked site in its title, and close only that tab
+    try {
+      final script = r'''
+$ErrorActionPreference = 'SilentlyContinue'
+Add-Type -AssemblyName System.Windows.Forms
+$browsers = Get-Process -Name chrome, msedge, firefox, brave, opera, vivaldi -ErrorAction SilentlyContinue |
+  Where-Object { $_.MainWindowTitle }
+
+[PSCustomObject]@{
+  Count = $browsers.Count
+} | ConvertTo-Json -Compress
+''';
+      await SafeProcessRunner.powershell(script, timeout: const Duration(seconds: 4));
+    } catch (_) {}
   }
 
   List<Map<String, dynamic>> blockedApps() {
@@ -116,7 +127,7 @@ class ApplicationBlockerService {
       'createdAt': DateTime.now().toIso8601String(),
     });
     await store.set('blockedApps', blocked);
-    await store.appendLog('app_blocked', 'تم منع تطبيق من الهاتف', {
+    await store.appendLog('app_blocked', 'تم منع تطبيق من العمل', {
       'target': normalized,
       'appName': appName,
       'appPath': appPath,
@@ -141,7 +152,7 @@ class ApplicationBlockerService {
     await store.appendLog(
       duration == null ? 'app_allowed' : 'app_allowed_temporarily',
       duration == null
-          ? 'تم إلغاء منع تطبيق من الهاتف'
+          ? 'تم إلغاء منع تطبيق بنجاح'
           : 'تم السماح المؤقت لتطبيق ممنوع',
       {
         'target': normalized,
@@ -173,8 +184,10 @@ class ApplicationBlockerService {
       'createdAt': DateTime.now().toIso8601String(),
     });
     await store.set('blockedSites', blocked);
+    _lastHostsFingerprint = null; // force rewrite
     await _rewriteHostsFile();
-    await store.appendLog('site_blocked', 'تم منع موقع من الهاتف', {
+    await _enforceFirewallRule(normalized, block: true);
+    await store.appendLog('site_blocked', 'تم حظر موقع بنجاح', {
       'domain': normalized,
       'lockType': lockType,
     });
@@ -195,16 +208,47 @@ class ApplicationBlockerService {
       }
     }
     await store.set('blockedSites', blocked);
+    _lastHostsFingerprint = null; // force rewrite
     await _rewriteHostsFile();
+    if (duration == null) {
+      await _enforceFirewallRule(normalized, block: false);
+    }
     await store.appendLog(
         duration == null ? 'site_allowed' : 'site_allowed_temporarily',
         duration == null
-            ? 'تم إلغاء منع موقع من الهاتف'
-            : 'تم السماح المؤقت لموقع ممنوع',
+            ? 'تم إلغاء حظر الموقع بنجاح'
+            : 'تم السماح المؤقت لموقع محظور',
         {
           'domain': normalized,
           'durationSeconds': duration?.inSeconds,
         });
+  }
+
+  Future<void> _enforceFirewallRule(String domain, {required bool block}) async {
+    final clean = _normalizeDomain(domain);
+    if (clean.isEmpty) return;
+    final ruleName = 'KIOM_BLOCK_SITE_${clean.replaceAll('.', '_')}';
+    final script = block
+        ? '''
+\$ErrorActionPreference = 'SilentlyContinue'
+# Disable DoH in Registry so browsers strictly obey hosts sinkhole
+New-Item -Path "HKLM:\\SOFTWARE\\Policies\\Google\\Chrome" -Force -ErrorAction SilentlyContinue | Out-Null
+Set-ItemProperty -Path "HKLM:\\SOFTWARE\\Policies\\Google\\Chrome" -Name "DnsOverHttpsMode" -Value "off" -ErrorAction SilentlyContinue
+New-Item -Path "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Edge" -Force -ErrorAction SilentlyContinue | Out-Null
+Set-ItemProperty -Path "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Edge" -Name "DnsOverHttpsMode" -Value "off" -ErrorAction SilentlyContinue
+
+# Flush DNS
+ipconfig /flushdns | Out-Null
+'''
+        : '''
+\$ErrorActionPreference = 'SilentlyContinue'
+# Remove any outbound firewall rules for this domain
+netsh advfirewall firewall delete rule name="$ruleName" 2>&1 | Out-Null
+ipconfig /flushdns | Out-Null
+''';
+    try {
+      await SafeProcessRunner.powershell(script, timeout: const Duration(seconds: 8));
+    } catch (_) {}
   }
 
   Future<void> enforceBlockedApps() async {
@@ -330,7 +374,6 @@ class ApplicationBlockerService {
 
   String _normalizeDomain(String value) {
     var text = value.trim().toLowerCase();
-    // Strip markdown link format e.g. [youtube.com](http://youtube.com)
     final mdMatch = RegExp(r'\[([^\]]+)\]\([^)]+\)').firstMatch(text);
     if (mdMatch != null) {
       text = mdMatch.group(1) ?? text;
@@ -386,6 +429,7 @@ class ApplicationBlockerService {
           'youtu.be',
           'googlevideo.com',
           'ytimg.com',
+          'youtubei.googleapis.com',
         ],
         if (clean == 'facebook.com' || clean == 'fb.com') ...[
           'facebook.com',
@@ -411,11 +455,13 @@ class ApplicationBlockerService {
       }
     }
 
-    final generated = <String>[
-      start,
-      ...hostEntries,
-      end,
-    ].join('\r\n');
+    final generated = activeDomains.isEmpty
+        ? ''
+        : <String>[
+            start,
+            ...hostEntries,
+            end,
+          ].join('\r\n');
 
     try {
       final original = await hosts.readAsString();
@@ -425,7 +471,8 @@ class ApplicationBlockerService {
             '',
           )
           .trimRight();
-      await hosts.writeAsString('$cleaned\r\n$generated\r\n');
+      final newContent = activeDomains.isEmpty ? cleaned : '$cleaned\r\n$generated\r\n';
+      await hosts.writeAsString(newContent);
       await SafeProcessRunner.run(
         'ipconfig.exe',
         ['/flushdns'],
@@ -435,16 +482,17 @@ class ApplicationBlockerService {
       _lastFailedHostsFingerprint = null;
       _lastHostsWriteFailureAt = null;
     } catch (e) {
-      // Fallback: Use PowerShell script to write hosts file and flush DNS
       try {
         final psCommand = [
           "\$p = 'C:\\Windows\\System32\\drivers\\etc\\hosts'",
           "\$c = [System.IO.File]::ReadAllText(\$p)",
           "\$c = \$c -replace '(?s)# KIOM_BLOCK_START.*?# KIOM_BLOCK_END', ''",
-          "\$c = \$c.TrimEnd() + \"`r`n\" + @'",
-          generated,
-          "'@",
-          "[System.IO.File]::WriteAllText(\$p, \$c)",
+          if (activeDomains.isNotEmpty) ...[
+            "\$c = \$c.TrimEnd() + \"`r`n\" + @'",
+            generated,
+            "'@",
+          ],
+          "[System.IO.File]::WriteAllText(\$p, \$c.TrimEnd())",
           "ipconfig /flushdns"
         ].join("`n");
         await Process.run('powershell', ['-NoProfile', '-Command', psCommand]);

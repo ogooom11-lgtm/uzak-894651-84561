@@ -429,10 +429,38 @@ function handleBlockSite() {
   input.value = '';
 }
 
+function handleUnblockSite() {
+  const input = document.getElementById('inputBlockSite');
+  if (!input || !input.value.trim()) return;
+  sendPcCommand(`/unblocksite ${input.value.trim()}`);
+  input.value = '';
+}
+
 function handleBlockApp() {
   const input = document.getElementById('inputBlockApp');
   if (!input || !input.value.trim()) return;
   sendPcCommand(`/blockapp ${input.value.trim()}`);
+  input.value = '';
+}
+
+function handleUnblockApp() {
+  const input = document.getElementById('inputBlockApp');
+  if (!input || !input.value.trim()) return;
+  sendPcCommand(`/unblockapp ${input.value.trim()}`);
+  input.value = '';
+}
+
+function handleLockPath() {
+  const input = document.getElementById('inputLockPath');
+  if (!input || !input.value.trim()) return;
+  sendPcCommand(`/lock ${input.value.trim()}`);
+  input.value = '';
+}
+
+function handleUnlockPath() {
+  const input = document.getElementById('inputLockPath');
+  if (!input || !input.value.trim()) return;
+  sendPcCommand(`/unlock ${input.value.trim()}`);
   input.value = '';
 }
 
@@ -611,6 +639,7 @@ function setupEventListeners() {
     { id: 'inputToastText', fn: handleSendToast },
     { id: 'inputBlockSite', fn: handleBlockSite },
     { id: 'inputBlockApp', fn: handleBlockApp },
+    { id: 'inputLockPath', fn: handleLockPath },
     { id: 'inputDownloadUrl', fn: handleDownloadFromUrl },
     { id: 'inputSearchFile', fn: handleSearchFiles },
     { id: 'inputGetFilePath', fn: handleGetFile },
