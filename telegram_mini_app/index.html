@@ -379,6 +379,37 @@
           </div>
         </div>
 
+        <!-- Advanced Logs Explorer Card -->
+        <div class="card mt-4">
+          <span class="card-section-title">📜 استعراض وتصفية سجل الأنشطة المتقدم</span>
+          <p class="text-muted text-sm mt-1">تحديد نوع السجل والفترة الزمنية من وإلى مع أوامر تفاعلية لكل عملية:</p>
+          <div class="grid grid-2 mt-2">
+            <div>
+              <label class="text-xs text-muted mb-1 block">نوع السجل:</label>
+              <select id="selectLogType" class="form-input">
+                <option value="all">📑 جميع السجلات</option>
+                <option value="files">📁 ملفات ومسارات</option>
+                <option value="apps">🖥️ برامج وتطبيقات</option>
+                <option value="blocked">🚫 عمليات ممنوعة</option>
+                <option value="commands">⚡ أوامر منفذة</option>
+                <option value="network">🔌 شبكة وأجهزة</option>
+              </select>
+            </div>
+            <div>
+              <label class="text-xs text-muted mb-1 block">الفترة الزمنية:</label>
+              <select id="selectLogRange" class="form-input">
+                <option value="today">📅 اليوم</option>
+                <option value="yesterday">📆 أمس</option>
+                <option value="1h">🕐 آخر ساعة</option>
+                <option value="7d">🗓️ آخر 7 أيام</option>
+                <option value="30d">🗓️ آخر 30 يوم</option>
+                <option value="all">🔄 كل السجلات</option>
+              </select>
+            </div>
+          </div>
+          <button class="btn btn-primary w-100 mt-2" onclick="handleFilterLogs()">🔍 تصفية وجلب السجل التفاعلي</button>
+        </div>
+
         <!-- Terminal Command Console -->
         <div class="card mt-4">
           <span class="card-section-title">💻 الطرفية التفاعلية المباشرة (Terminal)</span>

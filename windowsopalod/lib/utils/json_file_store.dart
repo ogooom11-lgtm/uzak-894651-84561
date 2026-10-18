@@ -232,4 +232,62 @@ CREATE TABLE IF NOT EXISTS command_history (
     }
     await save();
   }
+
+  Future<List<Map<String, dynamic>>> queryLogs({
+    String? type,
+    DateTime? from,
+    DateTime? to,
+    String? search,
+    int limit = 50,
+  }) async {
+    final whereClauses = <String>[];
+    final whereArgs = <dynamic>[];
+
+    if (type != null && type.isNotEmpty && type != 'all') {
+      whereClauses.add('type = ?');
+      whereArgs.add(type);
+    }
+
+    if (from != null) {
+      whereClauses.add('created_at >= ?');
+      whereArgs.add(from.toIso8601String());
+    }
+
+    if (to != null) {
+      whereClauses.add('created_at <= ?');
+      whereArgs.add(to.toIso8601String());
+    }
+
+    if (search != null && search.trim().isNotEmpty) {
+      whereClauses.add('(message LIKE ? OR extra LIKE ?)');
+      final term = '%${search.trim()}%';
+      whereArgs.add(term);
+      whereArgs.add(term);
+    }
+
+    final where = whereClauses.isNotEmpty ? whereClauses.join(' AND ') : null;
+
+    final rows = await _db.query(
+      'logs',
+      where: where,
+      whereArgs: whereArgs.isNotEmpty ? whereArgs : null,
+      orderBy: 'id DESC',
+      limit: limit,
+    );
+
+    return rows.map((row) {
+      Map<String, dynamic> extra = <String, dynamic>{};
+      try {
+        final decoded = jsonDecode(row['extra']?.toString() ?? '{}');
+        if (decoded is Map) extra = decoded.cast<String, dynamic>();
+      } catch (_) {}
+      return {
+        'id': row['id'],
+        'type': row['type']?.toString() ?? 'general',
+        'message': row['message']?.toString() ?? '',
+        'extra': extra,
+        'createdAt': row['created_at']?.toString() ?? DateTime.now().toIso8601String(),
+      };
+    }).toList();
+  }
 }

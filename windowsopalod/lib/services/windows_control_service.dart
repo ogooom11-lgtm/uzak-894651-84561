@@ -832,6 +832,77 @@ foreach ($d in $disks) {
     );
   }
 
+  Future<Map<String, String>> getNetworkDetails() async {
+    const script = r'''
+$ErrorActionPreference = 'SilentlyContinue'
+
+$netProfile = Get-NetConnectionProfile -ErrorAction SilentlyContinue | Select-Object -First 1
+$profileName = if ($netProfile) { $netProfile.Name } else { "" }
+$interfaceAlias = if ($netProfile) { $netProfile.InterfaceAlias } else { "" }
+
+$ssid = ""
+try {
+    $wlan = netsh wlan show interfaces
+    $match = $wlan | Select-String "SSID\s*:\s*(.+)" | Select-Object -First 1
+    if ($match) {
+        $ssid = $match.Matches.Groups[1].Value.Trim()
+    }
+} catch {}
+
+$ispName = ""
+$publicIp = ""
+$city = ""
+$country = ""
+
+try {
+    $ipInfo = Invoke-RestMethod -Uri "https://ipwho.is/" -TimeoutSec 3 -UseBasicParsing
+    if ($ipInfo -and $ipInfo.success) {
+        $publicIp = $ipInfo.ip
+        $ispName = if ($ipInfo.connection -and $ipInfo.connection.isp) { $ipInfo.connection.isp } else { $ipInfo.connection.org }
+        $city = $ipInfo.city
+        $country = $ipInfo.country
+    }
+} catch {
+    try {
+        $ipInfo2 = Invoke-RestMethod -Uri "https://ipapi.co/json/" -TimeoutSec 3 -UseBasicParsing
+        if ($ipInfo2) {
+            $publicIp = $ipInfo2.ip
+            $ispName = if ($ipInfo2.org) { $ipInfo2.org } else { $ipInfo2.isp }
+            $city = $ipInfo2.city
+            $country = $ipInfo2.country_name
+        }
+    } catch {}
+}
+
+$localIp = (Get-NetIPAddress -AddressFamily IPv4 -InterfaceAlias $interfaceAlias -ErrorAction SilentlyContinue | Select-Object -First 1).IPAddress
+if (-not $localIp) {
+    $localIp = (Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.IPAddress -notlike "127.*" -and $_.IPAddress -notlike "169.254.*" } | Select-Object -First 1).IPAddress
+}
+
+[PSCustomObject]@{
+    Isp = $ispName
+    ProfileName = $profileName
+    Ssid = $ssid
+    Interface = $interfaceAlias
+    PublicIp = $publicIp
+    LocalIp = $localIp
+    City = $city
+    Country = $country
+} | ConvertTo-Json -Compress
+''';
+    try {
+      final result = await _runPowerShell(script, timeout: const Duration(seconds: 8));
+      final stdout = result.stdout.toString().trim();
+      if (stdout.startsWith('{')) {
+        final decoded = jsonDecode(stdout);
+        if (decoded is Map) {
+          return decoded.map((k, v) => MapEntry(k.toString(), (v ?? '').toString()));
+        }
+      }
+    } catch (_) {}
+    return const {};
+  }
+
   Future<WindowsControlResult> cleanupTempFiles() async {
     final script = r'''
 $ErrorActionPreference = 'SilentlyContinue'

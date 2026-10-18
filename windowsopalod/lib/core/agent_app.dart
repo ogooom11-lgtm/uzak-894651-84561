@@ -284,9 +284,34 @@ class KiomPcAgentApp {
     );
     if (last != null && now.difference(last).inMinutes < 10) return;
 
-    final sent = await telegram.sendMessage(
-      'KIOM: الآن متصل\nالجهاز: $deviceName\nالمعرف: $deviceId',
-    );
+    final winControl = WindowsControlService();
+    final net = await winControl.getNetworkDetails();
+    final isp = (net['Isp'] ?? '').trim();
+    final ssid = (net['Ssid'] ?? net['ProfileName'] ?? '').trim();
+    final publicIp = (net['PublicIp'] ?? '').trim();
+    final localIp = (net['LocalIp'] ?? '').trim();
+    final location = [net['City'], net['Country']].where((s) => s != null && s.isNotEmpty).join(', ');
+
+    final buffer = StringBuffer();
+    buffer.writeln('🟢 <b>الكمبيوتر متصل الآن بالإنترنت</b>\n');
+    buffer.writeln('🖥️ <b>الجهاز:</b> $deviceName');
+    buffer.writeln('🆔 <b>المعرف:</b> <code>$deviceId</code>');
+    if (isp.isNotEmpty) {
+      buffer.writeln('🏢 <b>الشركة ومزود الإنترنت:</b> <b>$isp</b>');
+    }
+    if (ssid.isNotEmpty) {
+      buffer.writeln('📶 <b>الشبكة / WiFi:</b> $ssid');
+    }
+    if (localIp.isNotEmpty || publicIp.isNotEmpty) {
+      final ipText = [
+        if (localIp.isNotEmpty) 'محلي: $localIp',
+        if (publicIp.isNotEmpty) 'خارجي: $publicIp${location.isNotEmpty ? ' ($location)' : ''}',
+      ].join(' | ');
+      buffer.writeln('🌐 <b>عناوين IP:</b> <code>$ipText</code>');
+    }
+    buffer.writeln('⏱️ <b>التوقيت:</b> ${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')} ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}');
+
+    final sent = await telegram.sendMessage(buffer.toString().trim());
     if (sent) {
       await store.set('lastTelegramOnlineAt', now.toIso8601String());
     }

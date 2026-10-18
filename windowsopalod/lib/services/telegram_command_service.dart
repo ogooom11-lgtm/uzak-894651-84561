@@ -76,6 +76,8 @@ class TelegramCommandService {
 
   String _lastPolledBotToken = '';
   String _lastPolledCloudDbToken = '';
+  final Map<int, Map<String, dynamic>> _logActionItems = {};
+  final Map<String, Map<String, dynamic>> _appActionItems = {};
 
   Future<void> _pollCloudDb() async {
     if (_cloudDbPolling || cloudDbTelegram == null || !cloudDbTelegram!.hasBotToken) return;
@@ -713,6 +715,183 @@ class TelegramCommandService {
       await _handleExecutableText('send_file $path', chatId: chatId, replyToMessageId: messageId);
       return;
     }
+    if (data.startsWith('log_filter:')) {
+      final filterParam = data.substring('log_filter:'.length);
+      await _handleLogFilterCallback(filterParam, chatId: chatId, messageId: messageId);
+      return;
+    }
+    if (data.startsWith('lock_type_menu:')) {
+      final path = data.substring('lock_type_menu:'.length);
+      await _editOrSendMessage(
+        '🛡️ <b>اختيار نوع الحماية والقفل للمسار:</b>\n<code>$path</code>\n\nاختر نوع القفل المناسب:',
+        chatId: chatId,
+        messageId: messageId,
+        replyMarkup: _allLockTypesMenu(path),
+      );
+      return;
+    }
+    if (data.startsWith('lock_type:')) {
+      final rest = data.substring('lock_type:'.length);
+      final colon = rest.indexOf(':');
+      if (colon != -1) {
+        final lockType = rest.substring(0, colon);
+        final path = rest.substring(colon + 1);
+        await executor.executeTelegramCommand(
+          type: 'protect_path',
+          payload: {'path': path, 'lockType': lockType},
+        );
+        final typeLabel = switch (lockType) {
+          'password' => 'بكلمة مرور',
+          'permissionRequired' => 'باشتراط إذن الهاتف',
+          'readOnly' => 'قراءة فقط',
+          _ => 'نهائي',
+        };
+        await _editOrSendMessage(
+          '✅ <b>تم قفل وحماية المسار بنجاح (نوع القفل: $typeLabel):</b>\n<code>$path</code>',
+          chatId: chatId,
+          messageId: messageId,
+          replyMarkup: {
+            'inline_keyboard': [
+              [{'text': '🔓 إلغاء القفل', 'callback_data': 'unprotect_path:$path'}],
+              [{'text': '🔙 العودة للسجل', 'callback_data': 'logs'}],
+            ],
+          },
+        );
+      }
+      return;
+    }
+    if (data.startsWith('lock_timed_menu:')) {
+      final path = data.substring('lock_timed_menu:'.length);
+      await _editOrSendMessage(
+        '⏳ <b>اختيار مهلة القفل المؤقت للمسار:</b>\n<code>$path</code>',
+        chatId: chatId,
+        messageId: messageId,
+        replyMarkup: {
+          'inline_keyboard': [
+            [
+              {'text': '⏳ 15 دقيقة', 'callback_data': 'lock_timed:$path:15'},
+              {'text': '⏳ 30 دقيقة', 'callback_data': 'lock_timed:$path:30'},
+            ],
+            [
+              {'text': '⏳ ساعة واحدة', 'callback_data': 'lock_timed:$path:60'},
+              {'text': '⏳ 6 ساعات', 'callback_data': 'lock_timed:$path:360'},
+            ],
+            [
+              {'text': '⏳ 24 ساعة (يوم)', 'callback_data': 'lock_timed:$path:1440'},
+            ],
+            [
+              {'text': '🔙 عودة', 'callback_data': 'lock_type_menu:$path'},
+            ],
+          ],
+        },
+      );
+      return;
+    }
+    if (data.startsWith('lock_timed:')) {
+      final rest = data.substring('lock_timed:'.length);
+      final lastColon = rest.lastIndexOf(':');
+      if (lastColon != -1) {
+        final path = rest.substring(0, lastColon);
+        final mins = int.tryParse(rest.substring(lastColon + 1)) ?? 60;
+        await executor.executeTelegramCommand(
+          type: 'protect_path',
+          payload: {'path': path, 'lockType': 'blocked', 'durationMinutes': mins},
+        );
+        await _editOrSendMessage(
+          '⏳ <b>تم تفعيل القفل المؤقت بنجاح لمدة $mins دقيقة:</b>\n<code>$path</code>',
+          chatId: chatId,
+          messageId: messageId,
+          replyMarkup: {
+            'inline_keyboard': [
+              [{'text': '🔓 إلغاء القفل فوراً', 'callback_data': 'unprotect_path:$path'}],
+              [{'text': '🔙 العودة للسجل', 'callback_data': 'logs'}],
+            ],
+          },
+        );
+      }
+      return;
+    }
+    if (data.startsWith('kill_proc:')) {
+      final rest = data.substring('kill_proc:'.length);
+      final parts = rest.split(':');
+      final pid = parts[0];
+      final name = parts.length > 1 ? parts[1] : pid;
+      await SafeProcessRunner.run('taskkill.exe', ['/PID', pid, '/F']);
+      await _editOrSendMessage(
+        '❌ <b>تم إغلاق وإنهاء العملية فوراً بنجاح!</b>\n📦 التطبيق: <code>$name</code>\nPID: <code>$pid</code>',
+        chatId: chatId,
+        messageId: messageId,
+        replyMarkup: {
+          'inline_keyboard': [
+            [{'text': '🔄 تحديث قائمة التطبيقات', 'callback_data': 'apps'}],
+            [{'text': '🏠 القائمة الرئيسية', 'callback_data': 'menu_main'}],
+          ],
+        },
+      );
+      return;
+    }
+    if (data.startsWith('close_after:')) {
+      final rest = data.substring('close_after:'.length);
+      final parts = rest.split(':');
+      final name = parts[0];
+      final mins = parts.length > 1 ? (int.tryParse(parts[1]) ?? 15) : 15;
+      await executor.executeTelegramCommand(
+        type: 'close_application_after_delay',
+        payload: {'target': name, 'delayMinutes': mins},
+      );
+      await _editOrSendMessage(
+        '⏳ <b>تمت جدولة إغلاق التطبيق ($name) بعد $mins دقيقة بنجاح.</b>',
+        chatId: chatId,
+        messageId: messageId,
+      );
+      return;
+    }
+    if (data.startsWith('block_app_timed:')) {
+      final rest = data.substring('block_app_timed:'.length);
+      final parts = rest.split(':');
+      final name = parts[0];
+      final mins = parts.length > 1 ? (int.tryParse(parts[1]) ?? 60) : 60;
+      await executor.executeTelegramCommand(
+        type: 'block_application',
+        payload: {'target': name, 'durationSeconds': mins * 60},
+      );
+      await _editOrSendMessage(
+        '⏳ <b>تم حظر ومنع تشغيل التطبيق ($name) مؤقتاً لمدة $mins دقيقة بنجاح.</b>',
+        chatId: chatId,
+        messageId: messageId,
+      );
+      return;
+    }
+    if (data.startsWith('sync_onedrive:')) {
+      final path = data.substring('sync_onedrive:'.length);
+      await executor.windowsControl.syncFileToOneDrive(path);
+      await _editOrSendMessage(
+        '☁️ <b>تمت مزامنة الملف إلى OneDrive السحابي بنجاح!</b>\n<code>$path</code>',
+        chatId: chatId,
+        messageId: messageId,
+      );
+      return;
+    }
+    if (data.startsWith('sync_gdrive:')) {
+      final path = data.substring('sync_gdrive:'.length);
+      await executor.windowsControl.syncFileToGoogleDrive(path);
+      await _editOrSendMessage(
+        '☁️ <b>تمت مزامنة الملف إلى Google Drive السحابي بنجاح!</b>\n<code>$path</code>',
+        chatId: chatId,
+        messageId: messageId,
+      );
+      return;
+    }
+    if (data.startsWith('exec_open_url:')) {
+      final domain = data.substring('exec_open_url:'.length);
+      await executor.windowsControl.openBrowserUrl('https://$domain');
+      await _editOrSendMessage(
+        '🌐 <b>تم فتح الموقع على متصفح الكمبيوتر:</b>\n<code>$domain</code>',
+        chatId: chatId,
+        messageId: messageId,
+      );
+      return;
+    }
     if (data.startsWith('browse_folder:')) {
       final path = data.substring('browse_folder:'.length);
       await _handleExecutableText('browse $path', chatId: chatId, replyToMessageId: messageId);
@@ -950,6 +1129,105 @@ class TelegramCommandService {
         chatId: chatId,
         replyToMessageId: replyToMessageId,
         replyMarkup: _dashboardInlineMenu(),
+      );
+      return true;
+    }
+
+    if (lower == '/logs' ||
+        lower == 'logs' ||
+        lower == 'سجل' ||
+        lower == 'السجل' ||
+        lower == 'سجل العمليات' ||
+        lower == 'سجل الانشطة' ||
+        lower == 'سجل الأنشطة') {
+      await telegram.sendMessage(
+        '📜 <b>سجل الأنشطة والعمليات التفاعلي:</b>\n'
+        'اختر تصنيف السجل أو الفترة الزمنية المطلوبة أدناه، أو أرسل أمر مخصص بالصيغة:\n'
+        '• <code>/logs اليوم</code> أو <code>/logs امس</code>\n'
+        '• <code>/logs ملفات</code> أو <code>/logs برامج</code> أو <code>/logs ممنوعات</code>\n'
+        '• <code>/logs from 2026-10-18 08:00 to 2026-10-18 20:00</code>',
+        chatId: chatId,
+        replyToMessageId: replyToMessageId,
+        replyMarkup: _logFilterInlineMenu(),
+      );
+      return true;
+    }
+
+    if (lower.startsWith('/logs ') || lower.startsWith('logs ') || lower.startsWith('سجل ')) {
+      final queryParam = text.substring(text.indexOf(' ') + 1).trim();
+      await _handleCustomLogsQuery(queryParam, chatId: chatId, replyToMessageId: replyToMessageId);
+      return true;
+    }
+
+    if (lower.startsWith('/act_') || lower.startsWith('act_')) {
+      final normalized = _normalizeCommandText(text);
+      final parts = normalized.split('_');
+      final idx = int.tryParse(parts.last) ?? 0;
+      final item = _logActionItems[idx];
+      if (item != null) {
+        final itemType = (item['type'] ?? 'file').toString();
+        final path = (item['path'] ?? '').toString();
+        final target = (item['target'] ?? '').toString();
+        final title = (item['title'] ?? item['msg'] ?? '').toString();
+
+        if (itemType == 'file' && path.isNotEmpty) {
+          final fileName = path.replaceAll('/', r'\').split(r'\').last;
+          await telegram.sendMessage(
+            '📁 <b>لوحة التحكم في الملف/المسار:</b>\n'
+            '📄 <b>الاسم:</b> <code>$fileName</code>\n'
+            '📍 <b>المسار:</b> <code>$path</code>\n\n'
+            'اختر الإجراء المطلوب تطبيقه فوراً:',
+            chatId: chatId,
+            replyToMessageId: replyToMessageId,
+            replyMarkup: _fileActionInlineMenu(path),
+          );
+          return true;
+        } else if (itemType == 'app') {
+          final appName = target.isNotEmpty ? target : title;
+          await telegram.sendMessage(
+            '🖥️ <b>لوحة التحكم في التطبيق:</b>\n'
+            '📦 <b>التطبيق:</b> <code>$appName</code>\n\n'
+            'اختر الإجراء المطلوب تطبيقه:',
+            chatId: chatId,
+            replyToMessageId: replyToMessageId,
+            replyMarkup: _appActionInlineMenu(name: appName, pid: (item['pid'] ?? '').toString(), title: title),
+          );
+          return true;
+        } else if (itemType == 'site') {
+          final siteDomain = target.isNotEmpty ? target : title;
+          await telegram.sendMessage(
+            '🌐 <b>لوحة التحكم في الموقع:</b>\n'
+            '🔗 <b>الموقع:</b> <code>$siteDomain</code>\n\n'
+            'اختر الإجراء المطلوب:',
+            chatId: chatId,
+            replyToMessageId: replyToMessageId,
+            replyMarkup: _siteActionInlineMenu(siteDomain),
+          );
+          return true;
+        }
+      }
+    }
+
+    if (lower.startsWith('/app_') || lower.startsWith('app_') || lower.startsWith('/proc_') || lower.startsWith('proc_')) {
+      final normalized = _normalizeCommandText(text);
+      final token = normalized.substring(normalized.indexOf('_') + 1).trim();
+      final app = _appActionItems[token] ??
+          _appActionItems.values.firstWhere(
+            (a) => (a['name'] ?? '').toString().toLowerCase().contains(token.toLowerCase()),
+            orElse: () => {'pid': token, 'name': token, 'title': token},
+          );
+      final pid = (app['pid'] ?? token).toString();
+      final name = (app['name'] ?? token).toString();
+      final title = (app['title'] ?? '').toString();
+
+      await telegram.sendMessage(
+        '🖥️ <b>لوحة التحكم في التطبيق:</b>\n'
+        '📦 <b>الاسم:</b> <b>$name</b> (PID: <code>$pid</code>)\n'
+        '${title.isNotEmpty ? '📑 <b>العنوان:</b> <code>$title</code>\n\n' : '\n'}'
+        'اختر الإجراء المطلوب تطبيقه على التطبيق:',
+        chatId: chatId,
+        replyToMessageId: replyToMessageId,
+        replyMarkup: _appActionInlineMenu(name: name, pid: pid, title: title),
       );
       return true;
     }
@@ -2163,22 +2441,79 @@ class TelegramCommandService {
     // Activity Logs
     if (type == 'request_logs' || type == 'logs') {
       final logs = (payload['logs'] as List?) ?? const [];
-      if (logs.isEmpty) return '📜 لا توجد سجلات نشاط مسجلة مؤخراً.';
-      final lines = logs.take(15).map((log) {
-        if (log is! Map) return log.toString();
-        final action = (log['action'] ?? log['type'] ?? 'log').toString();
+      if (logs.isEmpty) return '📜 لا توجد سجلات مطابقة للشروط أو الفترة المحددة.';
+      _logActionItems.clear();
+      final buffer = StringBuffer();
+      buffer.writeln('📜 <b>سجل الأنشطة والعمليات (${logs.length}):</b>\n');
+
+      var i = 1;
+      for (final log in logs.take(20)) {
+        if (log is! Map) continue;
+        final action = (log['type'] ?? log['action'] ?? 'log').toString();
         final msg = (log['message'] ?? log['text'] ?? '').toString();
-        final timeStr = (log['createdAt'] ?? log['timestamp'] ?? '').toString();
+        final timeStr = (log['createdAt'] ?? log['created_at'] ?? log['timestamp'] ?? '').toString();
+        final extra = (log['extra'] as Map?)?.cast<String, dynamic>() ?? <String, dynamic>{};
+
         var shortTime = '';
         if (timeStr.isNotEmpty) {
           final dt = DateTime.tryParse(timeStr);
           if (dt != null) {
-            shortTime = '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')} - ';
+            shortTime = '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}:${dt.second.toString().padLeft(2, '0')}';
           }
         }
-        return '▫️ <b>$shortTime$action</b>: $msg';
-      }).join('\n');
-      return '📜 <b>سجلات النشاط الأخيرة (${logs.length}):</b>\n$lines';
+
+        // Determine item type
+        String itemType = 'log';
+        String path = (extra['path'] ?? extra['appPath'] ?? '').toString();
+        String target = (extra['target'] ?? extra['domain'] ?? extra['appName'] ?? '').toString();
+        String title = (extra['title'] ?? '').toString();
+
+        if (action.contains('path') || action.contains('file') || path.isNotEmpty) {
+          itemType = 'file';
+          if (path.isEmpty && msg.contains(r':\')) {
+            final match = RegExp(r'[A-Za-z]:\\[^\s\r\n]+').firstMatch(msg);
+            if (match != null) path = match.group(0)!;
+          }
+        } else if (action.contains('app') || target.endsWith('.exe')) {
+          itemType = 'app';
+        } else if (action.contains('site') || target.contains('.')) {
+          itemType = 'site';
+        }
+
+        _logActionItems[i] = {
+          'index': i,
+          'type': itemType,
+          'action': action,
+          'path': path,
+          'target': target,
+          'title': title,
+          'msg': msg,
+          'time': shortTime,
+          'extra': extra,
+        };
+
+        final icon = switch (itemType) {
+          'file' => '📁',
+          'app' => '🖥️',
+          'site' => '🌐',
+          _ => '▫️',
+        };
+
+        buffer.writeln('$i️⃣ $icon <b>$action</b>: $msg');
+        if (path.isNotEmpty) {
+          buffer.writeln('   📍 <code>$path</code>');
+        } else if (target.isNotEmpty) {
+          buffer.writeln('   🎯 <code>$target</code>');
+        }
+        if (shortTime.isNotEmpty) {
+          buffer.writeln('   ⏱️ $shortTime');
+        }
+        buffer.writeln('   👉 /act_${itemType}_$i\n');
+        i++;
+      }
+
+      buffer.writeln('💡 <i>اضغط على أي أمر /act أعلاه لعرض خيارات التحكم الكاملة (فتح، قفل، إرسال، حذف، حظر).</i>');
+      return buffer.toString().trim();
     }
 
     // File lists
@@ -2200,17 +2535,38 @@ class TelegramCommandService {
     if (type == 'list_open_apps' || type == 'open_apps') {
       final apps = (payload['apps'] as List?) ?? const [];
       if (apps.isEmpty) return 'ℹ️ لا توجد تطبيقات مفتوحة بنوافذ نشطة حالياً.';
-      final lines = apps.take(20).map((app) {
-        if (app is! Map) return app.toString();
-        final name = (app['appName'] ?? app['name'] ?? 'App').toString();
+      _appActionItems.clear();
+      final buffer = StringBuffer();
+      buffer.writeln('🖥️ <b>التطبيقات والنوافذ المفتوحة حالياً (${apps.length}):</b>\n');
+
+      var i = 1;
+      for (final app in apps.take(20)) {
+        if (app is! Map) continue;
+        final name = (app['appName'] ?? app['name'] ?? app['processName'] ?? 'App').toString();
         final pid = (app['processId'] ?? app['pid'] ?? '').toString();
         final title = (app['windowTitle'] ?? app['title'] ?? '').toString();
         final site = (app['siteName'] ?? '').toString();
         final page = (app['pageTitle'] ?? '').toString();
         final sub = site.isNotEmpty ? '🌐 $site' : (page.isNotEmpty ? '📄 $page' : title);
-        return '🔹 <b>$name</b> (PID: <code>$pid</code>)${sub.isNotEmpty ? '\n   └ $sub' : ''}';
-      }).join('\n');
-      return lines;
+
+        _appActionItems[pid] = {
+          'name': name,
+          'pid': pid,
+          'title': title.isNotEmpty ? title : sub,
+          'app': app,
+        };
+        _appActionItems[name.toLowerCase()] = _appActionItems[pid]!;
+
+        buffer.writeln('$i️⃣ <b>$name</b> (PID: <code>$pid</code>)');
+        if (sub.isNotEmpty) {
+          buffer.writeln('   └ $sub');
+        }
+        buffer.writeln('   👉 /app_$pid\n');
+        i++;
+      }
+
+      buffer.writeln('💡 <i>اضغط على أي أمر /app أعلاه للتحكم المباشر بالتطبيق (إغلاق فوري، قفل، حظر، إغلاق بعد مدة).</i>');
+      return buffer.toString().trim();
     }
 
     // Installed apps
@@ -2271,7 +2627,11 @@ class TelegramCommandService {
         for (final tab in tabs.take(8)) {
           final title = (tab['Title'] ?? '').toString();
           final browser = (tab['Browser'] ?? '').toString();
+          final pid = (tab['Id'] ?? '').toString();
           buffer.writeln('  ▫️ <b>$browser:</b> $title');
+          if (pid.isNotEmpty) {
+            buffer.writeln('     👉 /app_$pid');
+          }
         }
         buffer.writeln('');
       }
@@ -2281,7 +2641,11 @@ class TelegramCommandService {
         for (final doc in docs.take(8)) {
           final title = (doc['Title'] ?? '').toString();
           final path = (doc['Path'] ?? '').toString();
+          final pid = (doc['Id'] ?? '').toString();
           buffer.writeln('  ▫️ <b>$title</b>${path.isNotEmpty ? '\n     <code>$path</code>' : ''}');
+          if (pid.isNotEmpty) {
+            buffer.writeln('     👉 /app_$pid');
+          }
         }
         buffer.writeln('');
       }
@@ -2292,12 +2656,28 @@ class TelegramCommandService {
           final name = (f['Name'] ?? '').toString();
           final path = (f['Path'] ?? '').toString();
           buffer.writeln('  ▫️ 📁 <b>$name</b>\n     <code>$path</code>');
+          if (path.isNotEmpty) {
+            buffer.writeln('     👉 /lock $path');
+          }
         }
         buffer.writeln('');
       }
 
       if (apps.isNotEmpty) {
         buffer.writeln('🖥️ <b>التطبيقات والنوافذ الأخرى (${apps.length}):</b>');
+        for (final a in apps.take(6)) {
+          final name = (a['ProcessName'] ?? '').toString();
+          final title = (a['Title'] ?? '').toString();
+          final pid = (a['Id'] ?? '').toString();
+          buffer.writeln('  ▫️ <b>$name:</b> $title');
+          if (pid.isNotEmpty) {
+            buffer.writeln('     👉 /app_$pid');
+          }
+        }
+      }
+
+      return buffer.toString().trim();
+    }
         for (final a in apps.take(6)) {
           final name = (a['ProcessName'] ?? '').toString();
           final title = (a['Title'] ?? '').toString();
@@ -2538,10 +2918,20 @@ class TelegramCommandService {
       return {
         'inline_keyboard': [
           [
-            {'text': '🔄 تحديث السجل', 'callback_data': 'logs'},
-            {'text': '📊 التحليلات الذكية', 'callback_data': 'smart_insights'},
+            {'text': '📁 ملفات ومسارات', 'callback_data': 'log_filter:type:files'},
+            {'text': '🖥️ برامج وتطبيقات', 'callback_data': 'log_filter:type:apps'},
           ],
           [
+            {'text': '🚫 عمليات ممنوعة', 'callback_data': 'log_filter:type:blocked'},
+            {'text': '⚡ أوامر منفذة', 'callback_data': 'log_filter:type:commands'},
+          ],
+          [
+            {'text': '📅 اليوم', 'callback_data': 'log_filter:range:today'},
+            {'text': '📆 أمس', 'callback_data': 'log_filter:range:yesterday'},
+            {'text': '🕐 آخر ساعة', 'callback_data': 'log_filter:range:1h'},
+          ],
+          [
+            {'text': '🔄 تحديث وتصفية السجل', 'callback_data': 'logs'},
             {'text': '🔙 القائمة الرئيسية', 'callback_data': 'menu_main'},
           ],
         ],
@@ -3041,6 +3431,236 @@ class TelegramCommandService {
         ],
         [
           button('🔙 العودة للوحة الرئيسية', 'menu_main'),
+        ],
+      ],
+    };
+  }
+
+  Future<void> _handleCustomLogsQuery(
+    String query, {
+    required String chatId,
+    int? replyToMessageId,
+  }) async {
+    final lower = query.toLowerCase().trim();
+    String logType = 'all';
+    DateTime? from;
+    DateTime? to;
+
+    if (lower.contains('ملف') || lower.contains('file') || lower.contains('مسار') || lower.contains('path')) {
+      logType = 'path_opened';
+    } else if (lower.contains('برامج') || lower.contains('برنامج') || lower.contains('app') || lower.contains('تطبيق')) {
+      logType = 'app_blocked';
+    } else if (lower.contains('منع') || lower.contains('حظر') || lower.contains('block')) {
+      logType = 'blocked';
+    } else if (lower.contains('اوامر') || lower.contains('أوامر') || lower.contains('cmd') || lower.contains('command')) {
+      logType = 'commands';
+    }
+
+    final now = DateTime.now();
+    if (lower.contains('اليوم') || lower.contains('today')) {
+      from = DateTime(now.year, now.month, now.day);
+    } else if (lower.contains('امس') || lower.contains('أمس') || lower.contains('yesterday')) {
+      from = DateTime(now.year, now.month, now.day - 1);
+      to = DateTime(now.year, now.month, now.day);
+    } else if (lower.contains('ساعة') || lower.contains('1h') || lower.contains('hour')) {
+      from = now.subtract(const Duration(hours: 1));
+    } else if (lower.contains('اسبوع') || lower.contains('أسبوع') || lower.contains('7d') || lower.contains('week')) {
+      from = now.subtract(const Duration(days: 7));
+    } else if (lower.contains('شهر') || lower.contains('30d') || lower.contains('month')) {
+      from = now.subtract(const Duration(days: 30));
+    }
+
+    final dateMatches = RegExp(r'\b\d{4}-\d{2}-\d{2}(?:\s+\d{2}:\d{2})?\b').allMatches(query).toList();
+    if (dateMatches.length >= 2) {
+      from = DateTime.tryParse(dateMatches[0].group(0)!);
+      to = DateTime.tryParse(dateMatches[1].group(0)!);
+    } else if (dateMatches.length == 1) {
+      final d = DateTime.tryParse(dateMatches[0].group(0)!);
+      if (d != null) {
+        from = DateTime(d.year, d.month, d.day);
+        to = DateTime(d.year, d.month, d.day, 23, 59, 59);
+      }
+    }
+
+    final logs = await store.queryLogs(type: logType, from: from, to: to, limit: 30);
+    final payloadText = _briefPayload('request_logs', {'logs': logs});
+    await telegram.sendMessage(
+      payloadText,
+      chatId: chatId,
+      replyToMessageId: replyToMessageId,
+      replyMarkup: _resultInlineButtons('request_logs', {'logs': logs}),
+    );
+  }
+
+  Future<void> _handleLogFilterCallback(
+    String param, {
+    required String chatId,
+    int? messageId,
+  }) async {
+    String logType = 'all';
+    DateTime? from;
+    DateTime? to;
+
+    if (param.startsWith('type:')) {
+      logType = param.substring('type:'.length);
+    } else if (param.startsWith('range:')) {
+      final range = param.substring('range:'.length);
+      final now = DateTime.now();
+      switch (range) {
+        case '1h':
+          from = now.subtract(const Duration(hours: 1));
+          break;
+        case 'today':
+          from = DateTime(now.year, now.month, now.day);
+          break;
+        case 'yesterday':
+          from = DateTime(now.year, now.month, now.day - 1);
+          to = DateTime(now.year, now.month, now.day);
+          break;
+        case '7d':
+          from = now.subtract(const Duration(days: 7));
+          break;
+        case '30d':
+          from = now.subtract(const Duration(days: 30));
+          break;
+        default:
+          from = null;
+      }
+    }
+
+    final logs = await store.queryLogs(type: logType, from: from, to: to, limit: 30);
+    final payloadText = _briefPayload('request_logs', {'logs': logs});
+    await _editOrSendMessage(
+      payloadText,
+      chatId: chatId,
+      messageId: messageId,
+      replyMarkup: _resultInlineButtons('request_logs', {'logs': logs}),
+    );
+  }
+
+  Map<String, dynamic> _logFilterInlineMenu() {
+    return {
+      'inline_keyboard': [
+        [
+          {'text': '📁 ملفات ومسارات', 'callback_data': 'log_filter:type:path_opened'},
+          {'text': '🖥️ برامج وتطبيقات', 'callback_data': 'log_filter:type:app_blocked'},
+        ],
+        [
+          {'text': '🚫 محاولات ممنوعة', 'callback_data': 'log_filter:type:blocked'},
+          {'text': '⚡ أوامر منفذة', 'callback_data': 'log_filter:type:commands'},
+        ],
+        [
+          {'text': '🔌 شبكة وأجهزة', 'callback_data': 'log_filter:type:network'},
+          {'text': '📑 جميع السجلات', 'callback_data': 'log_filter:type:all'},
+        ],
+        [
+          {'text': '🕐 آخر ساعة', 'callback_data': 'log_filter:range:1h'},
+          {'text': '📅 سجل اليوم', 'callback_data': 'log_filter:range:today'},
+        ],
+        [
+          {'text': '📆 سجل أمس', 'callback_data': 'log_filter:range:yesterday'},
+          {'text': '🗓️ آخر 7 أيام', 'callback_data': 'log_filter:range:7d'},
+        ],
+        [
+          {'text': '🔙 القائمة الرئيسية', 'callback_data': 'menu_main'},
+        ],
+      ],
+    };
+  }
+
+  Map<String, dynamic> _fileActionInlineMenu(String path) {
+    return {
+      'inline_keyboard': [
+        [
+          {'text': '📂 فتح المسار بالكمبيوتر', 'callback_data': 'exec_open:$path'},
+          {'text': '📤 إرسال لـ Telegram', 'callback_data': 'get_file:$path'},
+        ],
+        [
+          {'text': '🔒 قفل نهائي (Blocked)', 'callback_data': 'lock_type:blocked:$path'},
+          {'text': '🔑 قفل بكلمة مرور', 'callback_data': 'lock_type:password:$path'},
+        ],
+        [
+          {'text': '📱 قفل بإذن الهاتف', 'callback_data': 'lock_type:permissionRequired:$path'},
+          {'text': '👁️ قفل قراءة فقط', 'callback_data': 'lock_type:readOnly:$path'},
+        ],
+        [
+          {'text': '⏳ قفل مؤقت (ساعة)', 'callback_data': 'lock_timed:$path:60'},
+          {'text': '⏳ مهلات قفل أخرى', 'callback_data': 'lock_timed_menu:$path'},
+        ],
+        [
+          {'text': '☁️ مزامنة OneDrive', 'callback_data': 'sync_onedrive:$path'},
+          {'text': '☁️ مزامنة Google Drive', 'callback_data': 'sync_gdrive:$path'},
+        ],
+        [
+          {'text': '🗑️ حذف الملف نهائياً', 'callback_data': 'delete_file:$path'},
+          {'text': '🔙 العودة للسجل', 'callback_data': 'logs'},
+        ],
+      ],
+    };
+  }
+
+  Map<String, dynamic> _allLockTypesMenu(String path) {
+    return {
+      'inline_keyboard': [
+        [
+          {'text': '🔒 قفل ومنع نهائي (Blocked)', 'callback_data': 'lock_type:blocked:$path'},
+        ],
+        [
+          {'text': '🔑 قفل بكلمة سر (Password)', 'callback_data': 'lock_type:password:$path'},
+        ],
+        [
+          {'text': '📱 قفل باشتراط إذن الهاتف (Permission Required)', 'callback_data': 'lock_type:permissionRequired:$path'},
+        ],
+        [
+          {'text': '👁️ قفل للقراءة فقط (Read-Only / No Modify)', 'callback_data': 'lock_type:readOnly:$path'},
+        ],
+        [
+          {'text': '⏳ قفل مؤقت لمهلة زمنية محددة', 'callback_data': 'lock_timed_menu:$path'},
+        ],
+        [
+          {'text': '🔙 إلغاء وعودة', 'callback_data': 'logs'},
+        ],
+      ],
+    };
+  }
+
+  Map<String, dynamic> _appActionInlineMenu({required String name, required String pid, String title = ''}) {
+    return {
+      'inline_keyboard': [
+        [
+          {'text': '❌ إغلاق فوري (Kill)', 'callback_data': 'kill_proc:$pid:$name'},
+          {'text': '⏳ إغلاق بعد 5 دقائق', 'callback_data': 'close_after:$name:5'},
+        ],
+        [
+          {'text': '⏳ إغلاق بعد 15 دقيقة', 'callback_data': 'close_after:$name:15'},
+          {'text': '⏳ إغلاق بعد 30 دقيقة', 'callback_data': 'close_after:$name:30'},
+        ],
+        [
+          {'text': '🚫 حظر ومنع نهائي', 'callback_data': 'block_app:$name'},
+          {'text': '⏳ حظر مؤقت (ساعة)', 'callback_data': 'block_app_timed:$name:60'},
+        ],
+        [
+          {'text': '🔓 فك حظر وسماح', 'callback_data': 'allow_app:$name'},
+          {'text': '📸 لقطة شاشة للنافذة', 'callback_data': 'screenshot'},
+        ],
+        [
+          {'text': '🔙 قائمة التطبيقات', 'callback_data': 'apps'},
+          {'text': '🏠 القائمة الرئيسية', 'callback_data': 'menu_main'},
+        ],
+      ],
+    };
+  }
+
+  Map<String, dynamic> _siteActionInlineMenu(String domain) {
+    return {
+      'inline_keyboard': [
+        [
+          {'text': '🚫 حظر الموقع وتوابعه', 'callback_data': 'block_site:$domain'},
+          {'text': '🔓 فك حظر وسماح', 'callback_data': 'allow_site:$domain'},
+        ],
+        [
+          {'text': '🌐 فتح في المتصفح', 'callback_data': 'exec_open_url:$domain'},
+          {'text': '🔙 العودة للسجل', 'callback_data': 'logs'},
         ],
       ],
     };

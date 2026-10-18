@@ -520,6 +520,16 @@ function handleFastCloudUpload() {
   }
 }
 
+function handleFilterLogs() {
+  const selectType = document.getElementById('selectLogType');
+  const selectRange = document.getElementById('selectLogRange');
+  const typeVal = selectType ? selectType.value : 'all';
+  const rangeVal = selectRange ? selectRange.value : 'today';
+
+  sendPcCommand(`/logs ${typeVal} ${rangeVal}`);
+  showToast(`🔍 جاري جلب السجل (${typeVal} - ${rangeVal})...`);
+}
+
 function handleTerminalSend() {
   const input = document.getElementById('inputTerminalCmd');
   if (!input || !input.value.trim()) return;
