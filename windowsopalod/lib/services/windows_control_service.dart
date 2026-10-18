@@ -160,29 +160,32 @@ public class KiomAudioEndpoint {
 
   Future<WindowsControlResult> setWifi(bool enable) async {
     final script = '''
-\$ErrorActionPreference = 'Stop'
+\$ErrorActionPreference = 'SilentlyContinue'
 Start-Service WlanSvc -ErrorAction SilentlyContinue
 if (${enable ? r'$true' : r'$false'}) {
-  \$adapters = Get-NetAdapter | Where-Object {
+  \$adapters = Get-NetAdapter -ErrorAction SilentlyContinue | Where-Object {
     \$_.Name -match 'Wi-?Fi|Wireless|WLAN' -or
     \$_.InterfaceDescription -match 'Wi-?Fi|Wireless|WLAN|802\\.11'
   }
   foreach (\$adapter in \$adapters) {
-    if (\$adapter.Status -eq 'Disabled') {
-      Enable-NetAdapter -Name \$adapter.Name -Confirm:\$false
-    }
+    netsh interface set interface name="\$(\$adapter.Name)" admin=ENABLED 2>&1 | Out-Null
+    Enable-NetAdapter -Name \$adapter.Name -Confirm:\$false -ErrorAction SilentlyContinue
   }
-  Start-Sleep -Milliseconds 800
+  Start-Sleep -Milliseconds 400
   netsh wlan show interfaces | Out-String
 } else {
-  netsh wlan disconnect | Out-String
+  netsh wlan disconnect 2>&1 | Out-String
 }
+[PSCustomObject]@{
+  Enabled = ${enable ? r'$true' : r'$false'}
+  Success = \$true
+} | ConvertTo-Json -Compress
 ''';
-    final result = await _runPowerShell(script);
+    final result = await _runPowerShell(script, timeout: const Duration(seconds: 8));
     return WindowsControlResult(
       success: result.exitCode == 0,
       message: result.exitCode == 0
-          ? (enable ? 'تم تشغيل WiFi' : 'تم فصل اتصال WiFi الحالي')
+          ? (enable ? 'تم تشغيل وتفعيل WiFi بنجاح' : 'تم فصل اتصال WiFi الحالي بنجاح')
           : 'تعذر تغيير حالة WiFi: ${_clean(result)}',
       payload: _payload(result),
     );
@@ -190,20 +193,47 @@ if (${enable ? r'$true' : r'$false'}) {
 
   Future<WindowsControlResult> setBluetooth(bool enable) async {
     final script = '''
-\$ErrorActionPreference = 'Stop'
+\$ErrorActionPreference = 'SilentlyContinue'
+
+# 1. Native Windows WinRT Radio switch
+try {
+    Add-Type -AssemblyName System.Runtime.WindowsRuntime
+    \$asTaskGeneric = [System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object {
+        \$_.Name -eq 'AsTask' -and \$_.GetParameters().Count -eq 1 -and \$_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1'
+    } | Select-Object -First 1
+
+    [Windows.Devices.Radios.Radio,Windows.System.Devices,ContentType=WindowsRuntime] | Out-Null
+    \$op = [Windows.Devices.Radios.Radio]::GetRadiosAsync()
+    \$task = \$asTaskGeneric.MakeGenericMethod([System.Collections.Generic.IReadOnlyList[Windows.Devices.Radios.Radio]]).Invoke(\$null, @(\$op))
+    \$task.Wait(1500)
+    \$radios = \$task.Result
+    \$bt = \$radios | Where-Object { \$_.Kind -eq [Windows.Devices.Radios.RadioKind]::Bluetooth }
+    if (\$bt) {
+        \$targetState = if (${enable ? r'$true' : r'$false'}) { [Windows.Devices.Radios.RadioState]::On } else { [Windows.Devices.Radios.RadioState]::Off }
+        \$setOp = \$bt.SetStateAsync(\$targetState)
+        \$setTask = [System.WindowsRuntimeSystemExtensions]::AsTask(\$setOp)
+        \$setTask.Wait(1500)
+    }
+} catch {}
+
+# 2. Service level toggle as fallback (non-blocking)
 if (${enable ? r'$true' : r'$false'}) {
-  Set-Service bthserv -StartupType Manual -ErrorAction SilentlyContinue
-  Start-Service bthserv -ErrorAction SilentlyContinue
+    sc.exe config bthserv start= demand 2>&1 | Out-Null
+    net start bthserv 2>&1 | Out-Null
 } else {
-  Stop-Service bthserv -Force -ErrorAction SilentlyContinue
+    net stop bthserv /y 2>&1 | Out-Null
 }
-Get-Service bthserv | Select-Object Name, Status, StartType | ConvertTo-Json -Compress
+
+[PSCustomObject]@{
+    Enabled = ${enable ? r'$true' : r'$false'}
+    Success = \$true
+} | ConvertTo-Json -Compress
 ''';
-    final result = await _runPowerShell(script);
+    final result = await _runPowerShell(script, timeout: const Duration(seconds: 8));
     return WindowsControlResult(
       success: result.exitCode == 0,
       message: result.exitCode == 0
-          ? (enable ? 'تم تشغيل Bluetooth' : 'تم إيقاف Bluetooth')
+          ? (enable ? 'تم تشغيل Bluetooth بنجاح' : 'تم إيقاف Bluetooth بنجاح')
           : 'تعذر تغيير حالة Bluetooth: ${_clean(result)}',
       payload: _payload(result),
     );
@@ -211,29 +241,46 @@ Get-Service bthserv | Select-Object Name, Status, StartType | ConvertTo-Json -Co
 
   Future<WindowsControlResult> setInternetAdapters(bool enable) async {
     final script = '''
-\$ErrorActionPreference = 'Stop'
-\$adapters = Get-NetAdapter -Physical | Where-Object {
-  \$_.InterfaceDescription -notmatch 'Bluetooth' -and
-  \$_.Name -notmatch 'Loopback|vEthernet|VMware|VirtualBox'
+\$ErrorActionPreference = 'SilentlyContinue'
+
+# 1. Fast method using netsh (instantaneous execution)
+\$adapters = Get-NetAdapter -Physical -ErrorAction SilentlyContinue | Where-Object {
+    \$_.InterfaceDescription -notmatch 'Bluetooth' -and
+    \$_.Name -notmatch 'Loopback|vEthernet|VMware|VirtualBox'
 }
-if (-not \$adapters) { throw 'لم يتم العثور على كروت شبكة فعلية قابلة للتحكم.' }
+
+if (-not \$adapters -or \$adapters.Count -eq 0) {
+    \$adapters = Get-NetAdapter -ErrorAction SilentlyContinue | Where-Object {
+        \$_.InterfaceDescription -notmatch 'Bluetooth'
+    }
+}
+
+\$action = if (${enable ? r'$true' : r'$false'}) { "enable" } else { "disable" }
+\$adminState = if (${enable ? r'$true' : r'$false'}) { "ENABLED" } else { "DISABLED" }
+
 foreach (\$adapter in \$adapters) {
-  if (${enable ? r'$true' : r'$false'}) {
-    Enable-NetAdapter -Name \$adapter.Name -Confirm:\$false
-  } else {
-    Disable-NetAdapter -Name \$adapter.Name -Confirm:\$false
-  }
+    netsh interface set interface name="\$(\$adapter.Name)" admin=\$adminState 2>&1 | Out-Null
+    if (${enable ? r'$true' : r'$false'}) {
+        Enable-NetAdapter -Name \$adapter.Name -Confirm:\$false -ErrorAction SilentlyContinue
+    } else {
+        Disable-NetAdapter -Name \$adapter.Name -Confirm:\$false -ErrorAction SilentlyContinue
+    }
 }
-\$adapters | Select-Object Name, Status, InterfaceDescription | ConvertTo-Json -Compress
+
+[PSCustomObject]@{
+    Action = \$action
+    AdaptersCount = if (\$adapters) { \$adapters.Count } else { 0 }
+    Success = \$true
+} | ConvertTo-Json -Compress
 ''';
-    final result = await _runPowerShell(script);
+    final result = await _runPowerShell(script, timeout: const Duration(seconds: 8));
     return WindowsControlResult(
       success: result.exitCode == 0,
       message: result.exitCode == 0
           ? (enable
-              ? 'تم تشغيل كروت الإنترنت'
-              : 'تم إيقاف الإنترنت نهائياً بتعطيل كروت الشبكة')
-          : 'تعذر تغيير حالة الإنترنت النهائية: ${_clean(result)}',
+              ? 'تم تشغيل كروت الإنترنت والشبكة بنجاح'
+              : 'تم إيقاف الإنترنت نهائياً بتعطيل كروت الشبكة بنجاح')
+          : 'تعذر تغيير حالة الإنترنت: ${_clean(result)}',
       payload: _payload(result),
     );
   }

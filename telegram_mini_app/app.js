@@ -1,14 +1,22 @@
 /**
  * KIOM - Telegram Mini App Controller
- * Automatic Chat Binding, Multi-Device Manager & Command Dispatcher
+ * Automatic Chat Binding, Live Cloud Device Discovery & Command Dispatcher
  */
+
+// Default credentials embedded for seamless standalone & WebApp operation
+const DEFAULT_USER_BOT_TOKEN = '8465366644:AAEMXtYGEl5Qo5BwNwiUdqmWml_vO-meliM';
+const DEFAULT_CLOUD_DB_BOT_TOKEN = '8919370396:AAHQrNYtJzy7yVPGIWQSsQjbcaAJ1Q8cWGw';
+const DEFAULT_CLOUD_DB_CHAT_ID = '-1004449817252';
+const DEFAULT_CHAT_ID = '8597783492';
 
 const tg = window.Telegram ? window.Telegram.WebApp : null;
 
 // Application State
 let state = {
-  chatId: '',
-  botToken: '',
+  chatId: DEFAULT_CHAT_ID,
+  botToken: DEFAULT_USER_BOT_TOKEN,
+  cloudDbBotToken: DEFAULT_CLOUD_DB_BOT_TOKEN,
+  cloudDbChatId: DEFAULT_CLOUD_DB_CHAT_ID,
   activeDeviceId: '',
   activeDeviceName: 'كمبيوتر KIOM',
   devices: []
@@ -17,6 +25,9 @@ let state = {
 document.addEventListener('DOMContentLoaded', () => {
   initApp();
   setupEventListeners();
+  fetchLiveDevicesFromCloud();
+  // Poll cloud devices every 8 seconds
+  setInterval(fetchLiveDevicesFromCloud, 8000);
 });
 
 /**
@@ -45,12 +56,11 @@ function initApp() {
   const qDeviceId = urlParams.get('device_id');
   const qDeviceName = urlParams.get('device_name');
 
-  // If passed from Bot URL, auto-bind immediately without asking user!
   if (qChatId) state.chatId = qChatId;
   if (qBotToken) state.botToken = qBotToken;
 
-  // Telegram native initData fallback
-  if (!state.chatId && tg && tg.initDataUnsafe) {
+  // Fallback to Telegram native initData
+  if (tg && tg.initDataUnsafe) {
     if (tg.initDataUnsafe.chat && tg.initDataUnsafe.chat.id) {
       state.chatId = tg.initDataUnsafe.chat.id.toString();
     } else if (tg.initDataUnsafe.user && tg.initDataUnsafe.user.id) {
@@ -58,7 +68,7 @@ function initApp() {
     }
   }
 
-  // Handle Device Registration from URL or start_param
+  // Handle Initial Device
   let initialDeviceId = qDeviceId;
   let initialDeviceName = qDeviceName;
 
@@ -78,7 +88,7 @@ function initApp() {
 
   saveLocalStorage();
   updateUI();
-  showToast('✅ تم ربط لوحة التحكم التفاعلية بالمحادثة بنجاح!');
+  showToast('✅ لوحة التحكم جاهزة ومربوطة بسحابة Telegram!');
 }
 
 /**
@@ -133,18 +143,20 @@ function saveLocalStorage() {
 /**
  * Register or update device in registry
  */
-function registerOrUpdateDevice(id, name) {
+function registerOrUpdateDevice(id, name, extra = {}) {
   if (!id) return;
   const existing = state.devices.find(d => d.id === id);
   if (existing) {
     if (name && name !== 'كمبيوتر متصل') existing.name = name;
     existing.lastSeen = new Date().toISOString();
+    Object.assign(existing, extra);
   } else {
     state.devices.push({
       id: id,
       name: name || `كمبيوتر (${id.substring(0, 6)})`,
       registeredAt: new Date().toISOString(),
-      lastSeen: new Date().toISOString()
+      lastSeen: new Date().toISOString(),
+      ...extra
     });
   }
   saveLocalStorage();
@@ -165,9 +177,70 @@ function selectDevice(id) {
   }
   saveLocalStorage();
   updateUI();
-  // Send /use command silently to switch agent selection in bot
   if (state.activeDeviceId) {
     sendPcCommandSilent(`/use ${state.activeDeviceId}`);
+  }
+}
+
+/**
+ * Fetch Live Connected Devices from Telegram Cloud Database (#KIOM_STATE)
+ */
+async function fetchLiveDevicesFromCloud() {
+  try {
+    const url = `https://api.telegram.org/bot${state.cloudDbBotToken}/getUpdates?limit=30&offset=-30`;
+    const resp = await fetch(url);
+    const data = await resp.json();
+    if (!data || !data.ok || !data.result) return;
+
+    data.result.forEach(update => {
+      const msg = update.message || update.channel_post;
+      if (!msg || !msg.text) return;
+      const text = msg.text.trim();
+      if (text.startsWith('#KIOM_STATE')) {
+        const jsonPart = text.substring('#KIOM_STATE'.length).trim();
+        try {
+          const payload = JSON.parse(jsonPart);
+          if (payload && payload.deviceId) {
+            registerOrUpdateDevice(payload.deviceId, payload.name || payload.deviceName, {
+              cpu: payload.cpu || payload.cpuPercent,
+              ram: payload.ram || payload.ramPercent,
+              activeWindow: payload.activeWindow || payload.windowTitle,
+              online: true,
+              lastStateUpdate: new Date().toISOString()
+            });
+
+            if (!state.activeDeviceId || state.activeDeviceId === payload.deviceId) {
+              state.activeDeviceId = payload.deviceId;
+              state.activeDeviceName = payload.name || payload.deviceName || state.activeDeviceName;
+              updateBadges(payload);
+            }
+          }
+        } catch (_) {}
+      }
+    });
+
+    updateUI();
+  } catch (e) {
+    console.debug('Cloud DB polling notice:', e);
+  }
+}
+
+/**
+ * Update Status Badges (CPU, RAM, Active Window)
+ */
+function updateBadges(payload) {
+  const badgeCpu = document.getElementById('badgeCpu');
+  const badgeRam = document.getElementById('badgeRam');
+  const valActiveWindow = document.getElementById('valActiveWindow');
+
+  if (badgeCpu && payload.cpu) {
+    badgeCpu.textContent = `⚡ CPU: ${payload.cpu}`;
+  }
+  if (badgeRam && payload.ram) {
+    badgeRam.textContent = `🧠 RAM: ${payload.ram}`;
+  }
+  if (valActiveWindow && payload.activeWindow) {
+    valActiveWindow.textContent = payload.activeWindow;
   }
 }
 
@@ -186,15 +259,15 @@ function updateUI() {
   if (headerDevice) headerDevice.textContent = state.activeDeviceName || 'كمبيوتر KIOM';
   if (headerStatus) {
     headerStatus.textContent = state.activeDeviceId 
-      ? `🟢 متصل: ${state.activeDeviceId.substring(0, 10)}...` 
-      : '🟢 مربوط تلقائياً بالمحادثة الحالية';
+      ? `🟢 متصل: ${state.activeDeviceId.substring(0, 8)}... (${state.devices.length} جهاز مسجل)` 
+      : '🟢 مربوط تلقائياً بسحابة Telegram';
   }
 
   if (valCurrentDevice) valCurrentDevice.textContent = state.activeDeviceId || 'الافتراضي (تلقائي)';
-  if (valCurrentChat) valCurrentChat.textContent = state.chatId || 'جارِ التعيين...';
+  if (valCurrentChat) valCurrentChat.textContent = state.chatId || DEFAULT_CHAT_ID;
 
-  if (settingsChat) settingsChat.textContent = state.chatId || 'غير متوفر';
-  if (settingsToken) settingsToken.textContent = state.botToken ? `${state.botToken.substring(0, 10)}...` : 'مُدار سحابياً';
+  if (settingsChat) settingsChat.textContent = state.chatId || DEFAULT_CHAT_ID;
+  if (settingsToken) settingsToken.textContent = `${state.botToken.substring(0, 10)}... (Control Bot)`;
   if (settingsActive) settingsActive.textContent = `${state.activeDeviceName} (${state.activeDeviceId || 'auto'})`;
 
   renderDeviceList();
@@ -210,7 +283,7 @@ function renderDeviceList() {
   if (state.devices.length === 0) {
     container.innerHTML = `
       <div class="card text-center text-muted text-sm">
-        لا توجد أجهزة مسجلة بعد. سيتم تسجيل الجهاز الحالي تلقائياً عند استلام أي أمر.
+        لا توجد أجهزة مسجلة بعد. عند تشغيل PC Agent على أي كمبيوتر سيظهر هنا فوراً.
       </div>
     `;
     return;
@@ -220,7 +293,7 @@ function renderDeviceList() {
   state.devices.forEach(d => {
     const isSelected = d.id === state.activeDeviceId;
     html += `
-      <div class="item-card ${isSelected ? 'border-accent' : ''}" style="${isSelected ? 'border: 1px solid var(--accent-color); background: rgba(56, 189, 248, 0.08);' : ''}">
+      <div class="item-card" style="${isSelected ? 'border: 1px solid var(--accent-color); background: rgba(56, 189, 248, 0.08);' : ''}">
         <div class="item-left">
           <span class="item-icon">${isSelected ? '⭐' : '🖥️'}</span>
           <div class="item-text">
@@ -242,47 +315,39 @@ function renderDeviceList() {
 }
 
 /**
- * Send Command to PC (via Telegram WebApp API and direct Bot API fallback)
+ * Send Command to PC (Direct Telegram Bot API Execution)
  */
 async function sendPcCommand(command) {
   if (!command) return;
   const cleanCmd = command.trim();
   logTerminal(`> ${cleanCmd}`);
 
-  // 1. Try sending via Telegram WebApp native sendData if supported
-  let sentViaWebApp = false;
-  if (tg && typeof tg.sendData === 'function') {
-    try {
-      tg.sendData(cleanCmd);
-      sentViaWebApp = true;
-    } catch (e) {
-      console.warn('tg.sendData failed:', e);
-    }
-  }
+  // Send directly via Telegram Bot HTTP API
+  const token = state.botToken || DEFAULT_USER_BOT_TOKEN;
+  const chatId = state.chatId || DEFAULT_CHAT_ID;
 
-  // 2. Direct Bot HTTP API fallback if botToken & chatId are known
-  if (state.botToken && state.chatId) {
-    try {
-      const url = `https://api.telegram.org/bot${state.botToken}/sendMessage`;
-      await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          chat_id: state.chatId,
-          text: cleanCmd
-        })
-      });
+  try {
+    const url = `https://api.telegram.org/bot${token}/sendMessage`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text: cleanCmd
+      })
+    });
+
+    const resJson = await response.json();
+    if (resJson && resJson.ok) {
+      logTerminal(`✔ تم إرسال الأمر للكمبيوتر بنجاح (${cleanCmd})`);
       showToast(`⚡ تم إرسال الأمر: ${cleanCmd}`);
-      return;
-    } catch (e) {
-      console.warn('Bot direct API fetch failed:', e);
+    } else {
+      logTerminal(`⚠ تنبيه: ${resJson.description || 'فشل الإرسال'}`);
+      showToast(`⚠️ ${resJson.description || 'تعذر الإرسال'}`, true);
     }
-  }
-
-  if (sentViaWebApp) {
-    showToast(`⚡ تم إرسال: ${cleanCmd}`);
-  } else {
-    showToast(`📤 تم إرسال الأمر: ${cleanCmd}`);
+  } catch (e) {
+    logTerminal(`❌ خطأ في الاتصال: ${e.message}`);
+    showToast(`❌ خطأ في الاتصال بالسحابة`, true);
   }
 }
 
@@ -290,14 +355,16 @@ async function sendPcCommand(command) {
  * Send command silently without toast
  */
 async function sendPcCommandSilent(command) {
-  if (!command || !state.botToken || !state.chatId) return;
+  if (!command) return;
+  const token = state.botToken || DEFAULT_USER_BOT_TOKEN;
+  const chatId = state.chatId || DEFAULT_CHAT_ID;
   try {
-    const url = `https://api.telegram.org/bot${state.botToken}/sendMessage`;
+    const url = `https://api.telegram.org/bot${token}/sendMessage`;
     await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        chat_id: state.chatId,
+        chat_id: chatId,
         text: command.trim()
       })
     });
@@ -462,6 +529,7 @@ function handleClearData() {
 
 function refreshDashboard() {
   sendPcCommand('/status');
+  fetchLiveDevicesFromCloud();
   showToast('🔄 تم إرسال طلب تحديث الحالة...');
 }
 
@@ -537,7 +605,6 @@ function escapeHtml(str) {
  * Setup Event Listeners
  */
 function setupEventListeners() {
-  // Enter key support for inputs
   const enterInputs = [
     { id: 'inputSayText', fn: handleSpeak },
     { id: 'inputOpenUrl', fn: handleOpenRemoteUrl },
