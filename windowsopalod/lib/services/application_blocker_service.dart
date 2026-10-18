@@ -52,18 +52,68 @@ class ApplicationBlockerService {
     final sites = blockedSites().where((s) => !_isTemporarilyAllowed(s)).toList();
     if (sites.isEmpty) return;
 
-    // Check if any open browser window has a blocked site in its title, and close only that tab
-    try {
-      final script = r'''
-$ErrorActionPreference = 'SilentlyContinue'
-Add-Type -AssemblyName System.Windows.Forms
-$browsers = Get-Process -Name chrome, msedge, firefox, brave, opera, vivaldi -ErrorAction SilentlyContinue |
-  Where-Object { $_.MainWindowTitle }
+    final keywords = <String>{};
+    for (final s in sites) {
+      final domain = (s['domain'] ?? '').toString();
+      final brand = _extractBrandName(domain);
+      if (brand.isNotEmpty && brand.length >= 2) {
+        keywords.add(brand.toLowerCase());
+      }
+      final clean = _normalizeDomain(domain);
+      if (clean.isNotEmpty) {
+        keywords.add(clean.toLowerCase());
+      }
+    }
 
-[PSCustomObject]@{
-  Count = $browsers.Count
-} | ConvertTo-Json -Compress
+    if (keywords.isEmpty) return;
+
+    final keywordList = keywords.map((k) => "'$k'").join(',');
+    final script = '''
+\$ErrorActionPreference = 'SilentlyContinue'
+\$keywords = @($keywordList)
+
+\$code = @"
+using System;
+using System.Runtime.InteropServices;
+
+public class KiomTabCloser {
+    [DllImport("user32.dll")]
+    public static extern bool SetForegroundWindow(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    public static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, int dwExtraInfo);
+
+    public static void CloseTab(IntPtr hWnd) {
+        try {
+            SetForegroundWindow(hWnd);
+            System.Threading.Thread.Sleep(50);
+            keybd_event(0x11, 0, 0, 0);
+            keybd_event(0x57, 0, 0, 0);
+            keybd_event(0x57, 0, 2, 0);
+            keybd_event(0x11, 0, 2, 0);
+        } catch {}
+    }
+}
+"@
+if (-not ('KiomTabCloser' -as [type])) {
+    Add-Type -TypeDefinition \$code
+}
+
+\$browsers = Get-Process -Name chrome, msedge, firefox, brave, opera, vivaldi -ErrorAction SilentlyContinue |
+  Where-Object { \$_.MainWindowTitle }
+
+foreach (\$b in \$browsers) {
+  \$title = \$b.MainWindowTitle.ToLower()
+  foreach (\$k in \$keywords) {
+    if (\$title -like "*\$k*") {
+      [KiomTabCloser]::CloseTab(\$b.MainWindowHandle)
+      Start-Sleep -Milliseconds 100
+      break
+    }
+  }
+}
 ''';
+    try {
       await SafeProcessRunner.powershell(script, timeout: const Duration(seconds: 4));
     } catch (_) {}
   }
@@ -196,13 +246,18 @@ $browsers = Get-Process -Name chrome, msedge, firefox, brave, opera, vivaldi -Er
   Future<void> allowSite(String domain, {Duration? duration}) async {
     final normalized = _normalizeDomain(domain);
     if (normalized.isEmpty) throw StateError('domain غير صالح');
+    final brand = _extractBrandName(normalized);
     final blocked = blockedSites();
     if (duration == null) {
-      blocked.removeWhere((item) => item['domain'] == normalized);
+      blocked.removeWhere((item) {
+        final d = item['domain'].toString();
+        return d == normalized || (brand.isNotEmpty && _extractBrandName(d) == brand);
+      });
     } else {
       final until = DateTime.now().add(duration).toIso8601String();
       for (final item in blocked) {
-        if (item['domain'] == normalized) {
+        final d = item['domain'].toString();
+        if (d == normalized || (brand.isNotEmpty && _extractBrandName(d) == brand)) {
           item['allowedUntil'] = until;
         }
       }
@@ -227,7 +282,8 @@ $browsers = Get-Process -Name chrome, msedge, firefox, brave, opera, vivaldi -Er
   Future<void> _enforceFirewallRule(String domain, {required bool block}) async {
     final clean = _normalizeDomain(domain);
     if (clean.isEmpty) return;
-    final ruleName = 'KIOM_BLOCK_SITE_${clean.replaceAll('.', '_')}';
+    final brand = _extractBrandName(clean);
+    final ruleName = 'KIOM_BLOCK_SITE_${brand.isNotEmpty ? brand : clean.replaceAll('.', '_')}';
     final script = block
         ? '''
 \$ErrorActionPreference = 'SilentlyContinue'
@@ -389,6 +445,183 @@ ipconfig /flushdns | Out-Null
     return text.trim();
   }
 
+  String _extractBrandName(String value) {
+    var text = _normalizeDomain(value);
+    if (text.isEmpty) return '';
+
+    const compoundTlds = [
+      '.com.tr', '.co.tr', '.net.tr', '.org.tr', '.gov.tr', '.edu.tr',
+      '.co.uk', '.org.uk', '.me.uk', '.net.uk', '.ltd.uk', '.plc.uk',
+      '.com.sa', '.net.sa', '.org.sa', '.edu.sa', '.gov.sa',
+      '.com.eg', '.net.eg', '.org.eg', '.edu.eg', '.gov.eg',
+      '.com.ae', '.net.ae', '.org.ae', '.gov.ae',
+      '.com.qa', '.net.qa', '.org.qa', '.gov.qa',
+      '.com.kw', '.net.kw', '.org.kw', '.gov.kw',
+      '.com.om', '.net.om', '.org.om', '.gov.om',
+      '.com.bh', '.net.bh', '.org.bh', '.gov.bh',
+      '.com.jo', '.net.jo', '.org.jo', '.gov.jo',
+      '.com.lb', '.net.lb', '.org.lb', '.gov.lb',
+      '.com.iq', '.net.iq', '.org.iq', '.gov.iq',
+      '.com.ye', '.net.ye', '.org.ye', '.gov.ye',
+      '.com.ru', '.net.ru', '.org.ru', '.pp.ru',
+      '.com.au', '.net.au', '.org.au', '.edu.au',
+      '.co.nz', '.net.nz', '.org.nz',
+      '.co.in', '.net.in', '.org.in', '.gen.in',
+      '.com.br', '.net.br', '.org.br',
+      '.com.mx', '.net.mx', '.org.mx',
+      '.com.ar', '.net.ar', '.org.ar',
+      '.co.za', '.net.za', '.org.za',
+      '.com.ng', '.net.ng', '.org.ng',
+      '.co.id', '.net.id', '.or.id',
+      '.com.ph', '.net.ph', '.org.ph',
+      '.com.my', '.net.my', '.org.my',
+      '.com.sg', '.net.sg', '.org.sg',
+      '.co.th', '.net.th', '.or.th',
+      '.com.vn', '.net.vn', '.org.vn',
+      '.co.jp', '.ne.jp', '.or.jp',
+      '.co.kr', '.ne.kr', '.or.kr',
+      '.com.tw', '.net.tw', '.org.tw',
+      '.com.hk', '.net.hk', '.org.hk',
+      '.com.cn', '.net.cn', '.org.cn',
+      '.com.ge', '.com.am', '.com.ua', '.net.ua', '.org.ua',
+      '.co.il', '.org.il', '.net.il',
+    ];
+
+    for (final ctld in compoundTlds) {
+      if (text.endsWith(ctld)) {
+        text = text.substring(0, text.length - ctld.length);
+        break;
+      }
+    }
+
+    final parts = text.split('.');
+    if (parts.length > 1) {
+      parts.removeLast();
+      text = parts.join('.');
+    }
+
+    final subParts = text.split('.');
+    return subParts.last.trim();
+  }
+
+  Set<String> _expandDomainVariants(String rawDomain) {
+    final clean = _normalizeDomain(rawDomain);
+    if (clean.isEmpty) return const {};
+
+    final brand = _extractBrandName(clean);
+    final results = <String>{clean, 'www.$clean', 'm.$clean'};
+
+    if (brand.isNotEmpty && brand.length >= 2) {
+      const allTlds = [
+        '.com', '.com.tr', '.tr', '.ru', '.by', '.kz', '.uz', '.ua', '.az',
+        '.net', '.org', '.info', '.biz', '.co', '.io', '.app', '.ai', '.me',
+        '.tv', '.cc', '.site', '.online', '.store', '.club', '.top', '.xyz',
+        '.dev', '.tech', '.eu', '.fr', '.de', '.es', '.it', '.nl', '.be',
+        '.ch', '.at', '.se', '.no', '.dk', '.fi', '.pt', '.ie', '.pl',
+        '.ro', '.hu', '.cz', '.gr', '.bg', '.rs', '.ee', '.lt', '.lv',
+        '.com.sa', '.sa', '.com.eg', '.eg', '.ae', '.com.ae', '.qa',
+        '.com.qa', '.kw', '.com.kw', '.om', '.com.om', '.bh', '.com.bh',
+        '.jo', '.com.jo', '.lb', '.com.lb', '.iq', '.com.iq', '.ye',
+        '.com.ye', '.dz', '.tn', '.ma', '.ly', '.sd', '.co.uk', '.uk',
+        '.com.au', '.au', '.co.nz', '.nz', '.ca', '.in', '.co.in',
+        '.com.br', '.br', '.com.mx', '.mx', '.com.ar', '.co.za', '.za',
+        '.com.ng', '.co.id', '.com.ph', '.com.my', '.com.sg', '.co.th',
+        '.com.vn', '.co.jp', '.jp', '.co.kr', '.kr', '.com.tw', '.com.hk',
+        '.com.cn', '.cn', '.com.ge', '.com.am', '.co.il',
+      ];
+
+      for (final tld in allTlds) {
+        final d = '$brand$tld';
+        results.add(d);
+        results.add('www.$d');
+        results.add('m.$d');
+        results.add('mobile.$d');
+        results.add('mail.$d');
+        results.add('disk.$d');
+        results.add('music.$d');
+        results.add('video.$d');
+        results.add('maps.$d');
+        results.add('news.$d');
+        results.add('translate.$d');
+        results.add('direct.$d');
+        results.add('passport.$d');
+        results.add('login.$d');
+        results.add('auth.$d');
+        results.add('api.$d');
+        results.add('cdn.$d');
+        results.add('app.$d');
+        results.add('web.$d');
+      }
+
+      // Brand-specific Ecosystem Clusters
+      if (brand == 'yandex' || brand == 'ya') {
+        const yandexAliases = [
+          'ya.ru', 'www.ya.ru', 'm.ya.ru', 'yastatic.net', 'dzen.ru',
+          'zen.yandex.ru', 'kinopoisk.ru', 'auto.ru', 'clck.ru', 'turbopages.org',
+          'yabs.yandex.ru', 'an.yandex.ru', 'mc.yandex.ru', 'adfox.ru',
+          'yandexcloud.net', 'eda.yandex.ru', 'market.yandex.ru', 'yango.com',
+          'yango.tech', 'music.yandex.ru', 'disk.yandex.ru', 'mail.yandex.ru',
+          'yandex.com.tr', 'www.yandex.com.tr', 'm.yandex.com.tr',
+        ];
+        results.addAll(yandexAliases);
+      } else if (brand == 'youtube' || brand == 'youtu') {
+        const ytAliases = [
+          'youtube.com', 'youtu.be', 'youtube-nocookie.com', 'ytimg.com',
+          'googlevideo.com', 'youtubei.googleapis.com', 'yt.be',
+          'music.youtube.com', 'gaming.youtube.com', 'studio.youtube.com',
+        ];
+        results.addAll(ytAliases);
+      } else if (brand == 'google') {
+        const gAliases = [
+          'googlevideo.com', 'googleusercontent.com', 'gstatic.com',
+          'googleapis.com', 'google-analytics.com', 'googletagmanager.com',
+          'g.co', 'goo.gl', '1e100.net',
+        ];
+        results.addAll(gAliases);
+      } else if (brand == 'facebook' || brand == 'fb') {
+        const fbAliases = [
+          'facebook.com', 'fb.com', 'fbcdn.net', 'fbsbx.com', 'messenger.com',
+          'meta.com', 'facebook.net', 'threads.net',
+        ];
+        results.addAll(fbAliases);
+      } else if (brand == 'instagram') {
+        const igAliases = [
+          'instagram.com', 'cdninstagram.com', 'ig.me', 'instagr.am',
+        ];
+        results.addAll(igAliases);
+      } else if (brand == 'tiktok') {
+        const ttAliases = [
+          'tiktok.com', 'tiktokcdn.com', 'tiktokv.com', 'musical.ly',
+          'byteoversea.com', 'ibytedtos.com',
+        ];
+        results.addAll(ttAliases);
+      } else if (brand == 'twitter' || brand == 'x') {
+        const twAliases = [
+          'twitter.com', 'x.com', 'twimg.com', 't.co', 'tweetdeck.com',
+          'periscope.tv', 'x.ai',
+        ];
+        results.addAll(twAliases);
+      } else if (brand == 'reddit') {
+        const rdAliases = [
+          'reddit.com', 'redd.it', 'redditmedia.com', 'redditstatic.com',
+        ];
+        results.addAll(rdAliases);
+      } else if (brand == 'telegram') {
+        const tgAliases = [
+          'telegram.org', 'web.telegram.org', 't.me', 'telesco.pe', 'telegram.me',
+        ];
+        results.addAll(tgAliases);
+      } else if (brand == 'whatsapp') {
+        const waAliases = [
+          'whatsapp.com', 'web.whatsapp.com', 'whatsapp.net',
+        ];
+        results.addAll(waAliases);
+      }
+    }
+
+    return results;
+  }
+
   String _safeId(String value) {
     final safe = value.toLowerCase().replaceAll(RegExp(r'[^a-z0-9_-]+'), '_');
     return safe.isEmpty
@@ -416,38 +649,7 @@ ipconfig /flushdns | Out-Null
 
     final hostEntries = <String>[];
     for (final domain in activeDomains) {
-      final clean = _normalizeDomain(domain);
-      final variants = <String>{
-        clean,
-        'www.$clean',
-        'm.$clean',
-        if (clean == 'youtube.com' || clean == 'youtu.be') ...[
-          'youtube.com',
-          'www.youtube.com',
-          'm.youtube.com',
-          'music.youtube.com',
-          'youtu.be',
-          'googlevideo.com',
-          'ytimg.com',
-          'youtubei.googleapis.com',
-        ],
-        if (clean == 'facebook.com' || clean == 'fb.com') ...[
-          'facebook.com',
-          'www.facebook.com',
-          'm.facebook.com',
-          'fb.com',
-          'messenger.com',
-        ],
-        if (clean == 'instagram.com') ...[
-          'instagram.com',
-          'www.instagram.com',
-        ],
-        if (clean == 'tiktok.com') ...[
-          'tiktok.com',
-          'www.tiktok.com',
-        ],
-      };
-
+      final variants = _expandDomainVariants(domain);
       for (final v in variants) {
         hostEntries.add('0.0.0.0 $v');
         hostEntries.add('127.0.0.1 $v');

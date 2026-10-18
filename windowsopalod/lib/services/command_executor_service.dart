@@ -1321,7 +1321,7 @@ class CommandExecutorService {
               passwordHash: command.payload['passwordHash']?.toString(),
             );
             success = true;
-            message = 'تم منع الموقع على هذا الكمبيوتر';
+            message = 'تم حظر الموقع وكافة نطاقاته وامتداداته الإقليمية التابعة بنجاح: $target';
             responsePayload = {'target': target};
             break;
 
@@ -1340,7 +1340,7 @@ class CommandExecutorService {
             );
             success = true;
             message = durationSeconds == null || durationSeconds <= 0
-                ? 'تم رفع منع الموقع'
+                ? 'تم إلغاء حظر الموقع وكافة نطاقاته التابعة بنجاح: $target'
                 : 'تم السماح للموقع لمدة ${(durationSeconds / 60).round()} دقيقة';
             responsePayload = {'target': target};
             break;
