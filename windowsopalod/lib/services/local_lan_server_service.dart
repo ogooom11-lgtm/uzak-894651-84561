@@ -5,6 +5,7 @@ import 'dart:io';
 import '../config/agent_config.dart';
 import '../services/command_executor_service.dart';
 import '../services/native_input_service.dart';
+import '../services/screen_stream_service.dart';
 import '../utils/json_file_store.dart';
 
 class LocalLanServerService {
@@ -130,6 +131,51 @@ class LocalLanServerService {
           'ip': _localIpAddress,
           'state': state,
           'timestamp': DateTime.now().toIso8601String(),
+        });
+      } else if (path == '/api/screen_frame') {
+        final frame = await ScreenStreamService.instance.captureFrame(
+          quality: int.tryParse(request.uri.queryParameters['quality'] ?? '65') ?? 65,
+          maxWidth: int.tryParse(request.uri.queryParameters['maxWidth'] ?? '1280') ?? 1280,
+        );
+        if (frame != null) {
+          request.response.statusCode = HttpStatus.ok;
+          request.response.headers.contentType = ContentType('image', 'jpeg');
+          request.response.headers.add('Cache-Control', 'no-cache, no-store, must-revalidate');
+          request.response.add(frame);
+          await request.response.close();
+        } else {
+          request.response.statusCode = HttpStatus.internalServerError;
+          await _respondJson(request, {'error': 'Failed to capture frame'});
+        }
+      } else if (path == '/api/stream') {
+        request.response.statusCode = HttpStatus.ok;
+        request.response.headers.set(
+          HttpHeaders.contentTypeHeader,
+          'multipart/x-mixed-replace; boundary=--frame',
+        );
+        request.response.headers.set(HttpHeaders.cacheControlHeader, 'no-cache');
+
+        final fps = int.tryParse(request.uri.queryParameters['fps'] ?? '12') ?? 12;
+        final intervalMs = (1000 / fps).round().clamp(40, 250);
+
+        Timer.periodic(Duration(milliseconds: intervalMs), (timer) async {
+          try {
+            final frame = await ScreenStreamService.instance.captureFrame(quality: 55, maxWidth: 1024);
+            if (frame != null && request.response.connectionInfo != null) {
+              request.response.write('--frame\r\n');
+              request.response.write('Content-Type: image/jpeg\r\n');
+              request.response.write('Content-Length: ${frame.length}\r\n\r\n');
+              request.response.add(frame);
+              request.response.write('\r\n');
+              await request.response.flush();
+            } else {
+              timer.cancel();
+              try { await request.response.close(); } catch (_) {}
+            }
+          } catch (_) {
+            timer.cancel();
+            try { await request.response.close(); } catch (_) {}
+          }
         });
       } else if (path == '/api/command' && request.method == 'POST') {
         final bodyStr = await utf8.decodeStream(request);
@@ -259,6 +305,40 @@ class LocalLanServerService {
           final dy = (msg['dy'] as num?)?.toInt() ?? 0;
           final dx = (msg['dx'] as num?)?.toInt() ?? 0;
           input.scrollWheel(dy, dx: dx);
+          break;
+
+        case 'tap':
+        case 'screen_tap':
+          final xRatio = (msg['xRatio'] as num?)?.toDouble() ?? 0.0;
+          final yRatio = (msg['yRatio'] as num?)?.toDouble() ?? 0.0;
+          final button = (msg['button'] ?? 'left').toString().toLowerCase();
+          final isDouble = msg['double'] == true;
+          unawaited(() async {
+            final res = await ScreenStreamService.instance.getScreenResolution();
+            final targetX = (xRatio * res.$1).round().clamp(0, res.$1);
+            final targetY = (yRatio * res.$2).round().clamp(0, res.$2);
+            input.moveMouseAbsolute(targetX, targetY);
+            if (isDouble) {
+              input.doubleClick();
+            } else if (button == 'right') {
+              input.rightClick();
+            } else if (button == 'middle') {
+              input.middleClick();
+            } else {
+              input.leftClick();
+            }
+          }());
+          break;
+
+        case 'screen_drag':
+          final xRatio = (msg['xRatio'] as num?)?.toDouble() ?? 0.0;
+          final yRatio = (msg['yRatio'] as num?)?.toDouble() ?? 0.0;
+          unawaited(() async {
+            final res = await ScreenStreamService.instance.getScreenResolution();
+            final targetX = (xRatio * res.$1).round().clamp(0, res.$1);
+            final targetY = (yRatio * res.$2).round().clamp(0, res.$2);
+            input.moveMouseAbsolute(targetX, targetY);
+          }());
           break;
 
         case 'key_press':

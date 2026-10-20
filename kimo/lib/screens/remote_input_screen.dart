@@ -6,6 +6,7 @@ import '../models/pc_device.dart';
 import '../services/lan_device_client.dart';
 import '../services/lan_discovery_service.dart';
 import '../widgets/app_snack.dart';
+import 'live_screen_screen.dart';
 
 class RemoteInputScreen extends StatefulWidget {
   const RemoteInputScreen({
@@ -370,6 +371,18 @@ class _RemoteInputScreenState extends State<RemoteInputScreen> {
           ],
         ),
         actions: [
+          IconButton(
+            tooltip: 'بث الشاشة المباشر',
+            icon: const Icon(Icons.tv_rounded, color: Colors.greenAccent),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => LiveScreenScreen(device: widget.device),
+                ),
+              );
+            },
+          ),
           IconButton(
             tooltip: 'حساسية الماوس',
             icon: const Icon(Icons.tune_rounded),

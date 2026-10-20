@@ -15,6 +15,7 @@ import 'file_manager_screen.dart';
 import 'health_screen.dart';
 import 'install_requests_screen.dart';
 import 'installed_apps_screen.dart';
+import 'live_screen_screen.dart';
 import 'logs_screen.dart';
 import 'open_apps_screen.dart';
 import 'modes_screen.dart';
@@ -306,7 +307,15 @@ class _DeviceDetailsViewState extends State<_DeviceDetailsView> {
 
             const SizedBox(height: 14),
 
-            // 3. Custom Smart Modes Hero Banner
+            // 3. Live Screen Mirror Hero Banner
+            _LiveScreenHeroCard(
+              device: device,
+              onTap: () => _open(LiveScreenScreen(device: device)),
+            ),
+
+            const SizedBox(height: 14),
+
+            // 4. Custom Smart Modes Hero Banner
             _CustomModesHeroCard(
               device: device,
               onTap: () => _open(ModesScreen(userId: userId, device: device)),
@@ -392,7 +401,13 @@ class _DeviceDetailsViewState extends State<_DeviceDetailsView> {
     // SECTION 1: Controls & Input
     final controlsItems = [
       _ActionData(
-        title: 'لوحة اللمس ولوحة المفاتيح',
+        title: 'بث وعرض شاشة الكمبيوتر مباشرة (Live Screen)',
+        subtitle: 'مشاهدة شاشة الكمبيوتر في الوقت الفعلي مع النقر والتفاعل باللمس عبر Wi-Fi',
+        icon: Icons.tv_rounded,
+        onTap: () => _open(LiveScreenScreen(device: widget.device)),
+      ),
+      _ActionData(
+        title: 'لوحة اللمس ولوحة المفاتيح (Trackpad)',
         subtitle: 'تحكم فوري بالماوس، لوحة اللمس، الأزرار والكتابة بدون إنترنت عبر Wi-Fi',
         icon: Icons.mouse_rounded,
         onTap: () => _open(RemoteInputScreen(device: widget.device)),
@@ -908,6 +923,113 @@ class _TrackpadHeroCard extends StatelessWidget {
                     const SizedBox(height: 4),
                     const Text(
                       'تحكم فوري بالماوس، لوحة اللمس، الأزرار، والكتابة بدون إنترنت',
+                      style: TextStyle(
+                        color: Colors.white70,
+                        fontSize: 11.5,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(
+                Icons.arrow_forward_ios_rounded,
+                color: Colors.white70,
+                size: 16,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _LiveScreenHeroCard extends StatelessWidget {
+  const _LiveScreenHeroCard({required this.device, required this.onTap});
+
+  final PcDevice device;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final isLan = device.isLanOnline;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(24),
+        child: Ink(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(24),
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                Color(0xFF0284C7),
+                Color(0xFF0369A1),
+              ],
+            ),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x400284C7),
+                blurRadius: 16,
+                offset: Offset(0, 6),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 52,
+                height: 52,
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: const Icon(
+                  Icons.tv_rounded,
+                  color: Colors.white,
+                  size: 28,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Text(
+                          'بث شاشة الكمبيوتر (Live Mirror)',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 15,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: isLan ? const Color(0xFF10B981) : Colors.white24,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            isLan ? 'مباشر ⚡' : 'محلي',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'مشاهدة شاشة الكمبيوتر بالوقت الفعلي مع إمكانية النقر والتحكم باللمس',
                       style: TextStyle(
                         color: Colors.white70,
                         fontSize: 11.5,
