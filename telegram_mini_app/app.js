@@ -464,6 +464,13 @@ function handleUnlockPath() {
   input.value = '';
 }
 
+function handleFastSendText() {
+  const input = document.getElementById('inputFastTypeText');
+  if (!input || !input.value.trim()) return;
+  sendPcCommand(`/press ${input.value.trim()}`);
+  input.value = '';
+}
+
 function handleDownloadFromUrl() {
   const input = document.getElementById('inputDownloadUrl');
   if (!input || !input.value.trim()) {

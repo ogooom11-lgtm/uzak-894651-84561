@@ -13,6 +13,7 @@ import '../widgets/empty_state.dart';
 import '../widgets/status_chip.dart';
 import 'device_details_screen.dart';
 import 'pairing_screen.dart';
+import 'remote_input_screen.dart';
 import 'settings_screen.dart';
 
 enum _ConnectionUiState { checking, online, offline }
@@ -550,6 +551,12 @@ class _DeviceCard extends StatelessWidget {
                   runSpacing: 8,
                   spacing: 8,
                   children: [
+                    if (device.isLanOnline)
+                      StatusChip(
+                        label: 'Wi-Fi LAN (${device.lanPingMs ?? 2}ms)',
+                        icon: Icons.network_check_rounded,
+                        color: const Color(0xFF10B981),
+                      ),
                     StatusChip(
                       label: 'WiFi: ${device.wifiStatus ?? 'غير معروف'}',
                       icon: Icons.wifi_rounded,
@@ -586,6 +593,19 @@ class _DeviceCard extends StatelessWidget {
                       label: checking ? 'يتحقق...' : 'فحص',
                       icon: checking ? Icons.sync_rounded : Icons.radar_rounded,
                       onTap: checking ? null : onRefresh,
+                    ),
+                    const SizedBox(width: 8),
+                    _MiniActionButton(
+                      label: 'ماوس',
+                      icon: Icons.mouse_rounded,
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => RemoteInputScreen(device: device),
+                          ),
+                        );
+                      },
                     ),
                     const SizedBox(width: 8),
                     _MiniActionButton(

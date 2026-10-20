@@ -184,6 +184,24 @@
           </div>
         </div>
 
+        <!-- Touchpad & Remote Keyboard -->
+        <div class="card mt-4">
+          <span class="card-section-title">🖱️ محاكاة الماوس والكتابة في الكمبيوتر</span>
+          <p class="text-muted text-sm mt-1">كتابة نصوص أو تنفيذ نقرات واختصارات مباشرة على شاشة الكمبيوتر:</p>
+          <div class="input-group mt-2">
+            <input type="text" id="inputFastTypeText" placeholder="اكتب نصاً للكتابة فوراً بالكمبيوتر..." class="form-input">
+            <button class="btn btn-primary" onclick="handleFastSendText()">كتابة ✍️</button>
+          </div>
+          <div class="grid grid-3 mt-2">
+            <button class="btn btn-secondary btn-sm" onclick="sendPcCommand('/press {ENTER}')">↵ Enter</button>
+            <button class="btn btn-secondary btn-sm" onclick="sendPcCommand('/press {ESC}')">Esc</button>
+            <button class="btn btn-secondary btn-sm" onclick="sendPcCommand('/press {TAB}')">Tab</button>
+            <button class="btn btn-secondary btn-sm" onclick="sendPcCommand('/press ^{c}')">📋 نسخ (Ctrl+C)</button>
+            <button class="btn btn-secondary btn-sm" onclick="sendPcCommand('/press ^{v}')">📑 لصق (Ctrl+V)</button>
+            <button class="btn btn-secondary btn-sm" onclick="sendPcCommand('/press ^{z}')">↩️ تراجع (Ctrl+Z)</button>
+          </div>
+        </div>
+
         <!-- Remote Browser Opener -->
         <div class="card mt-4">
           <span class="card-section-title">🌐 فتح رابط في متصفح الكمبيوتر عن بُعد</span>

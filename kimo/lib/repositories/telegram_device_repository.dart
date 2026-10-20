@@ -20,6 +20,8 @@ import '../models/pc_device.dart';
 import '../models/permission_request.dart';
 import '../models/remote_file_item.dart';
 import '../models/screenshot_item.dart';
+import '../services/lan_device_client.dart';
+import '../services/lan_discovery_service.dart';
 import '../services/local_linked_devices_store.dart';
 import 'device_repository.dart';
 
@@ -123,6 +125,9 @@ class TelegramDeviceRepository implements DeviceRepository {
     _relayPollTimer = Timer.periodic(const Duration(seconds: 2), (_) => _pollRelayUpdates());
     _pollTelegram();
     _pollRelayUpdates();
+
+    // Start Local LAN Auto-Discovery (Port 42425)
+    unawaited(LanDiscoveryService.instance.start());
   }
 
   Future<void> _publishToRelay(String topic, Map<String, dynamic> data) async {
@@ -542,8 +547,51 @@ class TelegramDeviceRepository implements DeviceRepository {
 
   @override
   Stream<List<PcDevice>> watchDevices(String userId) async* {
-    yield await _store.loadDevices(userId);
-    yield* _store.watchDevices(userId);
+    List<PcDevice> enrichWithLan(List<PcDevice> list) {
+      return list.map((d) {
+        final info = LanDiscoveryService.instance.getDevice(d.id);
+        if (info != null && info.isFresh) {
+          return d.copyWith(
+            isLanOnline: true,
+            lanIp: info.ip,
+            lanPort: info.httpPort,
+            lanPingMs: info.pingMs,
+          );
+        }
+        return d;
+      }).toList();
+    }
+
+    final initial = await _store.loadDevices(userId);
+    yield enrichWithLan(initial);
+
+    final mergedController = StreamController<List<PcDevice>>();
+    StreamSubscription? sub1;
+    StreamSubscription? sub2;
+
+    void updateLatest() async {
+      final current = await _store.loadDevices(userId);
+      if (!mergedController.isClosed) {
+        mergedController.add(enrichWithLan(current));
+      }
+    }
+
+    sub1 = _store.watchDevices(userId).listen((list) {
+      if (!mergedController.isClosed) {
+        mergedController.add(enrichWithLan(list));
+      }
+    });
+
+    sub2 = LanDiscoveryService.instance.stream.listen((_) {
+      updateLatest();
+    });
+
+    mergedController.onCancel = () {
+      sub1?.cancel();
+      sub2?.cancel();
+    };
+
+    yield* mergedController.stream;
   }
 
   @override
@@ -709,6 +757,41 @@ class TelegramDeviceRepository implements DeviceRepository {
       if (executeAt != null) 'executeAt': executeAt.toIso8601String(),
       'createdAt': DateTime.now().toIso8601String(),
     };
+
+    // 0. Instant Local LAN Dispatch (if PC is on same Wi-Fi)
+    final lanInfo = LanDiscoveryService.instance.getDevice(deviceId);
+    if (lanInfo != null && lanInfo.isFresh) {
+      unawaited(() async {
+        try {
+          final lanClient = LanDeviceClient(host: lanInfo.ip, port: lanInfo.httpPort);
+          final res = await lanClient.sendCommand(
+            type.wireName,
+            payload: payload,
+            timeout: const Duration(seconds: 4),
+          );
+          if (res['success'] != null) {
+            final resObj = CommandResponse(
+              id: const Uuid().v4(),
+              commandId: commandId,
+              deviceId: deviceId,
+              commandType: type.wireName,
+              phase: 'executed',
+              success: res['success'] == true,
+              message: (res['message'] ?? 'تم تنفيذ الأمر محلياً عبر شبكة Wi-Fi').toString(),
+              createdAt: DateTime.now(),
+              payload: (res['payload'] as Map?)?.cast<String, dynamic>() ?? {},
+            );
+            _commandResponses.putIfAbsent(deviceId, () => []).insert(0, resObj);
+            _commandResponsesController.add(deviceId);
+            final completer = _pendingResponseCompleters.remove(commandId);
+            if (completer != null && !completer.isCompleted) {
+              completer.complete(resObj);
+            }
+          }
+          lanClient.dispose();
+        } catch (_) {}
+      }());
+    }
 
     // 1. Instant Realtime Cloud Relay (Global)
     unawaited(_publishToRelay('kiom_cmd_$deviceId', envelope));

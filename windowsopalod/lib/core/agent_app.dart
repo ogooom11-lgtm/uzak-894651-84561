@@ -12,7 +12,9 @@ import '../services/firestore_rest_client.dart';
 import '../services/hotkey_pairing_qr_service.dart';
 import '../services/installed_apps_sync_service.dart';
 import '../services/installation_guard_service.dart';
+import '../services/local_lan_server_service.dart';
 import '../services/local_logs_center_hotkey_service.dart';
+import '../services/native_input_service.dart';
 import '../services/open_apps_sync_service.dart';
 import '../services/path_guard_service.dart';
 import '../services/path_rule_store.dart';
@@ -41,6 +43,10 @@ class KiomPcAgentApp {
   TelegramCommandService? _telegramCommands;
   TelegramCloudDatabaseService? _telegramCloudDb;
   PathGuardService? _pathGuard;
+  LocalLanServerService? _lanServer;
+
+  TelegramCloudDatabaseService? get telegramCloudDb => _telegramCloudDb;
+  LocalLanServerService? get lanServer => _lanServer;
 
   TelegramCloudDatabaseService? get telegramCloudDb => _telegramCloudDb;
 
@@ -269,6 +275,15 @@ class KiomPcAgentApp {
       firestore: firestore,
       telegram: userTelegram,
     )..start();
+
+    _lanServer = LocalLanServerService(
+      deviceId: deviceId,
+      deviceName: device['name'].toString(),
+      config: config,
+      store: store,
+      executor: _commandExecutor!,
+    );
+    await _lanServer!.start();
   }
 
   Future<void> _notifyOnlineOnce({
@@ -331,5 +346,6 @@ class KiomPcAgentApp {
     _telegramCommands?.stop();
     _telegramCloudDb?.stop();
     _pathGuard?.stop();
+    _lanServer?.stop();
   }
 }

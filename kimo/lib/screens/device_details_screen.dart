@@ -22,6 +22,7 @@ import 'operation_messages_screen.dart';
 import 'permission_requests_screen.dart';
 import 'power_screen.dart';
 import 'protection_screen.dart';
+import 'remote_input_screen.dart';
 import 'scheduler_screen.dart';
 import 'screenshots_screen.dart';
 import 'settings_screen.dart';
@@ -247,10 +248,27 @@ class _DeviceDetailsView extends StatelessWidget {
           children: [
             _DeviceHero(device: device, online: online),
             const SizedBox(height: 14),
+            _TrackpadHeroCard(
+              device: device,
+              onTap: () => _open(
+                context,
+                RemoteInputScreen(device: device),
+              ),
+            ),
+            const SizedBox(height: 14),
             _DirectModeBanner(deviceName: device.name),
             const SizedBox(height: 14),
             _QuickActionsGrid(
               actions: [
+                _QuickAction(
+                  title: 'ماوس وكيبورد',
+                  icon: Icons.mouse_rounded,
+                  color: const Color(0xFF10B981),
+                  onTap: () => _open(
+                    context,
+                    RemoteInputScreen(device: device),
+                  ),
+                ),
                 _QuickAction(
                   title: 'لقطة شاشة',
                   icon: Icons.screenshot_monitor_rounded,
@@ -612,6 +630,12 @@ class _DeviceHero extends StatelessWidget {
                 icon: online ? Icons.bolt_rounded : Icons.wifi_off_rounded,
                 color: Colors.white,
               ),
+              if (device.isLanOnline)
+                StatusChip(
+                  label: 'Wi-Fi مباشر (${device.lanPingMs ?? 2}ms)',
+                  icon: Icons.network_check_rounded,
+                  color: const Color(0xFF6EE7B7),
+                ),
               StatusChip(
                 label: device.isMuted ? 'مكتوم' : 'الصوت ${device.volume}%',
                 icon: device.isMuted
@@ -765,6 +789,113 @@ class _QuickAction extends StatelessWidget {
                     .textTheme
                     .bodySmall
                     ?.copyWith(fontWeight: FontWeight.w900),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _TrackpadHeroCard extends StatelessWidget {
+  const _TrackpadHeroCard({required this.device, required this.onTap});
+
+  final PcDevice device;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final isLan = device.isLanOnline;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(24),
+        child: Ink(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(24),
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                const Color(0xFF065F46).withValues(alpha: 0.85),
+                const Color(0xFF047857).withValues(alpha: 0.95),
+              ],
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF059669).withValues(alpha: 0.25),
+                blurRadius: 16,
+                offset: const Offset(0, 6),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 52,
+                height: 52,
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: const Icon(
+                  Icons.mouse_rounded,
+                  color: Colors.white,
+                  size: 28,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Text(
+                          'لوحة اللمس والكيبورد (Trackpad)',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 15,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: isLan ? const Color(0xFF10B981) : Colors.white24,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            isLan ? 'Wi-Fi ⚡' : 'محلي',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'تحكم فوري بالماوس، لوحة اللمس، الأزرار، والكتابة بدون إنترنت',
+                      style: TextStyle(
+                        color: Colors.white70,
+                        fontSize: 11.5,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(
+                Icons.arrow_forward_ios_rounded,
+                color: Colors.white70,
+                size: 16,
               ),
             ],
           ),
