@@ -17,6 +17,7 @@ import 'firestore_rest_client.dart';
 import 'path_rule_store.dart';
 import 'permission_state_service.dart';
 import 'process_monitor_service.dart';
+import 'process_priority_service.dart';
 import 'screenshot_service.dart';
 import 'telegram_notifier_service.dart';
 import 'windows_control_service.dart';
@@ -961,6 +962,42 @@ class CommandExecutorService {
             responsePayload = {'clipboard': clipText};
             break;
 
+          case 'get_clipboard_history':
+          case 'clipboard_history':
+            final query = (command.payload['query'] ?? command.payload['search'] ?? '').toString();
+            final limit = int.tryParse((command.payload['limit'] ?? 50).toString()) ?? 50;
+            final history = await store.queryClipboardHistory(limit: limit, query: query);
+            success = true;
+            message = 'تم جلب سجل الحافظة (${history.length} عنصر)';
+            responsePayload = {'items': history, 'count': history.length};
+            break;
+
+          case 'clear_clipboard_history':
+            await store.clearClipboardHistory();
+            success = true;
+            message = 'تم مسح سجل الحافظة بالكامل بنجاح';
+            responsePayload = {'cleared': true};
+            break;
+
+          case 'exit_agent':
+          case 'stop_agent':
+            success = true;
+            message = 'تم استلام أمر إيقاف وإغلاق تطبيق الكمبيوتر. جاري الإنهاء فوراً...';
+            responsePayload = {'exiting': true};
+            await store.appendLog('agent_exit_command', 'تم إيقاف عميل الكمبيوتر بأمر عن بُعد');
+            Future.delayed(const Duration(milliseconds: 800), () => exit(0));
+            break;
+
+          case 'elevate_priority':
+          case 'set_high_priority':
+            final elevated = await ProcessPriorityService.instance.elevateToHighPriority();
+            success = true;
+            message = elevated
+                ? 'تم منح تطبيق الكمبيوتر أولوية عليا (High Priority) في معالجة وتنفيذ الأوامر'
+                : 'أولوية التطبيق الحالية نشطة';
+            responsePayload = {'elevated': elevated};
+            break;
+
           case 'set_clipboard':
             final clipText = (command.payload['text'] ?? '').toString();
             await Process.run('powershell', ['-NoProfile', '-Command', 'Set-Clipboard -Value "$clipText"']);
@@ -1638,6 +1675,43 @@ class CommandExecutorService {
             success = true;
             message = clipText.isNotEmpty ? '📋 محتوى الحافظة:\n<code>$clipText</code>' : '📋 حافظة الكمبيوتر فارغة حالياً';
             responsePayload = {'clipboard': clipText};
+            break;
+
+          case 'get_clipboard_history':
+          case 'clipboard_history':
+          case 'clip_history':
+            final query = (command.payload['query'] ?? command.payload['search'] ?? '').toString();
+            final limit = int.tryParse((command.payload['limit'] ?? 50).toString()) ?? 50;
+            final history = await store.queryClipboardHistory(limit: limit, query: query);
+            success = true;
+            message = '📋 سجل الحافظة (${history.length} عنصر):';
+            responsePayload = {'items': history, 'count': history.length};
+            break;
+
+          case 'clear_clipboard_history':
+            await store.clearClipboardHistory();
+            success = true;
+            message = '🗑️ تم مسح سجل الحافظة بالكامل بنجاح';
+            responsePayload = {'cleared': true};
+            break;
+
+          case 'exit_agent':
+          case 'stop_agent':
+            success = true;
+            message = '🛑 تم استلام أمر إيقاف تطبيق الكمبيوتر. جاري الإغلاق فوراً...';
+            responsePayload = {'exiting': true};
+            await store.appendLog('agent_exit_command', 'تم إيقاف عميل الكمبيوتر بأمر عن بُعد');
+            Future.delayed(const Duration(milliseconds: 800), () => exit(0));
+            break;
+
+          case 'elevate_priority':
+          case 'set_high_priority':
+            final elevated = await ProcessPriorityService.instance.elevateToHighPriority();
+            success = true;
+            message = elevated
+                ? '⚡ تم رفع أولوية التطبيق إلى High Priority لتنفيذ الأوامر بأقصى سرعة'
+                : '⚡ أولوية التطبيق الحالية نشطة';
+            responsePayload = {'elevated': elevated};
             break;
 
           case 'set_clipboard':

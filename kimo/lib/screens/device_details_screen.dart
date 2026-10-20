@@ -10,6 +10,7 @@ import '../widgets/app_snack.dart';
 import '../widgets/status_chip.dart';
 import 'blocked_items_screen.dart';
 import 'bluetooth_screen.dart';
+import 'clipboard_history_screen.dart';
 import 'file_manager_screen.dart';
 import 'health_screen.dart';
 import 'install_requests_screen.dart';
@@ -185,6 +186,35 @@ class _DeviceDetailsView extends StatelessWidget {
       CommandType.textToSpeech,
       'تم إرسال أمر النطق الصوتي للكمبيوتر.',
       payload: {'text': text},
+    );
+  }
+
+  Future<void> _stopAgentOnComputer(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('إيقاف تطبيق الكمبيوتر عن بُعد'),
+        content: const Text(
+          'هل أنت متأكد من رغبتك في إغلاق تطبيق عميل التحكم على الكمبيوتر؟\n\n'
+          '⚠️ سيتوقف العميل عن استقبال الأوامر حتى يتم إعادة تشغيل الكمبيوتر أو فتح التطبيق يدوياً.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('إلغاء')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Theme.of(context).colorScheme.error),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('إيقاف وإغلاق الآن'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !context.mounted) return;
+    await _sendCommand(
+      context,
+      CommandType.checkConnection,
+      'تم إرسال أمر إيقاف وإغلاق تطبيق الكمبيوتر بنجاح.',
+      payload: {'action': 'exit_agent'},
     );
   }
 
@@ -453,6 +483,13 @@ class _DeviceDetailsView extends StatelessWidget {
                 PowerScreen(userId: userId, device: device),
               ),
             ),
+            ActionTile(
+              title: 'إيقاف تطبيق الكمبيوتر عن بُعد',
+              subtitle: 'إغلاق وإنهاء عملية تطبيق العميل الشغال على الكمبيوتر',
+              icon: Icons.stop_circle_rounded,
+              danger: true,
+              onTap: () => _stopAgentOnComputer(context),
+            ),
             const SizedBox(height: 20),
             _SectionTitle(
               title: 'المراقبة والأمان والتكامل',
@@ -507,6 +544,15 @@ class _DeviceDetailsView extends StatelessWidget {
               onTap: () => _open(
                 context,
                 ScreenshotsScreen(userId: userId, device: device),
+              ),
+            ),
+            ActionTile(
+              title: 'سجل الحافظة الذكي',
+              subtitle: 'سجل كامل لعمليات النسخ (Ctrl+C) مع المسار والتطبيق المصدر',
+              icon: Icons.history_edu_rounded,
+              onTap: () => _open(
+                context,
+                ClipboardHistoryScreen(userId: userId, device: device),
               ),
             ),
             ActionTile(

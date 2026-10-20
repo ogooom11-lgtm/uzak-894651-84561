@@ -1159,6 +1159,76 @@ class TelegramCommandService {
       return true;
     }
 
+    if (lower == '/clip_history' ||
+        lower == '/clipboard_history' ||
+        lower == 'clip_history' ||
+        lower == 'clipboard_history' ||
+        lower == 'سجل الحافظة' ||
+        lower == 'الحافظة') {
+      final history = await store.queryClipboardHistory(limit: 20);
+      if (history.isEmpty) {
+        await telegram.sendMessage(
+          '📋 <b>سجل الحافظة فارغ حالياً.</b>\nأي عملية نسخ (Ctrl+C) تتم في الكمبيوتر ستُسجل تلقائياً هنا مع اسم التطبيق والمسار.',
+          chatId: chatId,
+          replyToMessageId: replyToMessageId,
+        );
+      } else {
+        final buffer = StringBuffer();
+        buffer.writeln('📋 <b>سجل الحافظة الذكي (${history.length}):</b>\n');
+        for (final item in history) {
+          final content = (item['content'] ?? '').toString();
+          final app = (item['sourceAppName'] ?? item['sourceApp'] ?? 'تطبيق').toString();
+          final title = (item['sourceTitle'] ?? '').toString();
+          final path = (item['sourcePath'] ?? '').toString();
+          final time = (item['createdAt'] ?? '').toString();
+          var timeStr = '';
+          if (time.isNotEmpty) {
+            final dt = DateTime.tryParse(time);
+            if (dt != null) {
+              timeStr = ' [${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}]';
+            }
+          }
+          final shortContent = content.length > 80 ? '${content.substring(0, 80)}...' : content;
+          buffer.writeln('🔹 <b>$app$timeStr:</b> $shortContent');
+          if (title.isNotEmpty) buffer.writeln('   📑 $title');
+          if (path.isNotEmpty) buffer.writeln('   📍 <code>$path</code>');
+          buffer.writeln('');
+        }
+        await telegram.sendMessage(
+          buffer.toString().trim(),
+          chatId: chatId,
+          replyToMessageId: replyToMessageId,
+        );
+      }
+      return true;
+    }
+
+    if (lower == '/exit_agent' ||
+        lower == '/stop_agent' ||
+        lower == 'stop_agent' ||
+        lower == 'exit_agent' ||
+        lower == 'ايقاف العميل' ||
+        lower == 'إيقاف العميل' ||
+        lower == 'اغلاق التطبيق') {
+      await telegram.sendMessage(
+        '🛑 <b>تم إيقاف وإنهاء تطبيق عميل الكمبيوتر فوراً بناءً على طلبك.</b>',
+        chatId: chatId,
+        replyToMessageId: replyToMessageId,
+      );
+      await store.appendLog('agent_exit_command', 'تم إيقاف عميل الكمبيوتر بأمر تيليجرام');
+      Future.delayed(const Duration(milliseconds: 800), () => exit(0));
+      return true;
+    }
+
+    if (lower == '/priority' || lower == 'priority' || lower == 'الاولية' || lower == 'الأولوية') {
+      await _executeDirectCommand(
+        const _ParsedTelegramCommand('elevate_priority'),
+        chatId: chatId,
+        replyToMessageId: replyToMessageId,
+      );
+      return true;
+    }
+
     if (lower.startsWith('/act_') || lower.startsWith('act_')) {
       final normalized = _normalizeCommandText(text);
       final parts = normalized.split('_');

@@ -3,6 +3,7 @@ import 'dart:io';
 
 import '../config/agent_config.dart';
 import '../services/application_blocker_service.dart';
+import '../services/clipboard_monitor_service.dart';
 import '../services/command_executor_service.dart';
 import '../services/connectivity_notifier_service.dart';
 import '../services/desktop_lock_service.dart';
@@ -21,6 +22,7 @@ import '../services/path_rule_store.dart';
 import '../services/permission_center_hotkey_service.dart';
 import '../services/permission_state_service.dart';
 import '../services/process_monitor_service.dart';
+import '../services/process_priority_service.dart';
 import '../services/single_instance_service.dart';
 import '../services/startup_registration_service.dart';
 import '../services/startup_task_service.dart';
@@ -44,11 +46,10 @@ class KiomPcAgentApp {
   TelegramCloudDatabaseService? _telegramCloudDb;
   PathGuardService? _pathGuard;
   LocalLanServerService? _lanServer;
+  ClipboardMonitorService? _clipboardMonitor;
 
   TelegramCloudDatabaseService? get telegramCloudDb => _telegramCloudDb;
   LocalLanServerService? get lanServer => _lanServer;
-
-  TelegramCloudDatabaseService? get telegramCloudDb => _telegramCloudDb;
 
   Future<void> start() async {
     final config = await AgentConfig.load();
@@ -284,6 +285,16 @@ class KiomPcAgentApp {
       executor: _commandExecutor!,
     );
     await _lanServer!.start();
+
+    // Elevate Windows Process Priority to High for instantaneous response
+    unawaited(ProcessPriorityService.instance.elevateToHighPriority());
+
+    // Start Clipboard History Monitoring (Captures content, source app & path)
+    _clipboardMonitor = ClipboardMonitorService(
+      store: store,
+      telegram: userTelegram,
+      lanServer: _lanServer,
+    )..start();
   }
 
   Future<void> _notifyOnlineOnce({
@@ -347,5 +358,6 @@ class KiomPcAgentApp {
     _telegramCloudDb?.stop();
     _pathGuard?.stop();
     _lanServer?.stop();
+    _clipboardMonitor?.stop();
   }
 }

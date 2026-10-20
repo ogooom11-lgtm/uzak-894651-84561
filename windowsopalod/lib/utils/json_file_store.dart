@@ -82,7 +82,20 @@ CREATE TABLE IF NOT EXISTS command_history (
   message TEXT,
   payload TEXT,
   created_at TEXT NOT NULL
-)
+);
+CREATE TABLE IF NOT EXISTS clipboard_history (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  item_id TEXT UNIQUE,
+  type TEXT NOT NULL,
+  content TEXT NOT NULL,
+  char_count INTEGER,
+  source_app TEXT,
+  source_app_name TEXT,
+  source_title TEXT,
+  source_path TEXT,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_clipboard_history_created_at ON clipboard_history(created_at);
 ''');
   }
 
@@ -289,5 +302,77 @@ CREATE TABLE IF NOT EXISTS command_history (
         'createdAt': row['created_at']?.toString() ?? DateTime.now().toIso8601String(),
       };
     }).toList();
+  }
+
+  Future<void> appendClipboardEntry({
+    required String itemId,
+    required String type,
+    required String content,
+    int? charCount,
+    String? sourceApp,
+    String? sourceAppName,
+    String? sourceTitle,
+    String? sourcePath,
+  }) async {
+    final createdAt = DateTime.now().toIso8601String();
+    await _db.insert(
+      'clipboard_history',
+      {
+        'item_id': itemId,
+        'type': type,
+        'content': content,
+        'char_count': charCount ?? content.length,
+        'source_app': sourceApp ?? '',
+        'source_app_name': sourceAppName ?? '',
+        'source_title': sourceTitle ?? '',
+        'source_path': sourcePath ?? '',
+        'created_at': createdAt,
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+    await _db.delete(
+      'clipboard_history',
+      where: 'id NOT IN (SELECT id FROM clipboard_history ORDER BY id DESC LIMIT 500)',
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> queryClipboardHistory({
+    int limit = 50,
+    String? query,
+  }) async {
+    String? where;
+    List<dynamic>? whereArgs;
+
+    if (query != null && query.trim().isNotEmpty) {
+      where = '(content LIKE ? OR source_app LIKE ? OR source_title LIKE ? OR source_path LIKE ?)';
+      final term = '%${query.trim()}%';
+      whereArgs = [term, term, term, term];
+    }
+
+    final rows = await _db.query(
+      'clipboard_history',
+      where: where,
+      whereArgs: whereArgs,
+      orderBy: 'id DESC',
+      limit: limit,
+    );
+
+    return rows.map((row) {
+      return {
+        'id': row['item_id']?.toString() ?? row['id'].toString(),
+        'type': row['type']?.toString() ?? 'text',
+        'content': row['content']?.toString() ?? '',
+        'charCount': row['char_count'] as int? ?? 0,
+        'sourceApp': row['source_app']?.toString() ?? '',
+        'sourceAppName': row['source_app_name']?.toString() ?? '',
+        'sourceTitle': row['source_title']?.toString() ?? '',
+        'sourcePath': row['source_path']?.toString() ?? '',
+        'createdAt': row['created_at']?.toString() ?? '',
+      };
+    }).toList();
+  }
+
+  Future<void> clearClipboardHistory() async {
+    await _db.delete('clipboard_history');
   }
 }
