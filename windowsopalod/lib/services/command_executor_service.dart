@@ -2634,6 +2634,28 @@ class CommandExecutorService {
 
   Future<_CommandProcessResult> _applyPresetMode(String mode) async {
     final normalized = mode.trim().toLowerCase();
+
+    if (normalized == 'default' || normalized == 'off' || normalized == 'none' || normalized == 'cancel') {
+      final prev = store.get<Map<String, dynamic>>('activePresetMode');
+      if (prev != null) {
+        final prevSites = (prev['sites'] as List?)?.map((e) => e.toString()).toList() ?? [];
+        final prevApps = (prev['apps'] as List?)?.map((e) => e.toString()).toList() ?? [];
+        for (final site in prevSites) {
+          await appBlocker.allowSite(site);
+        }
+        for (final app in prevApps) {
+          await appBlocker.allowApp(target: app);
+        }
+      }
+      await store.set('activePresetMode', null);
+      await _syncBlockedItemsBestEffort();
+      return _CommandProcessResult(
+        success: true,
+        message: 'تم إيقاف الوضع واستعادة الحالة الطبيعية للكمبيوتر',
+        payload: {'mode': 'default'},
+      );
+    }
+
     final sites = <String>[];
     final apps = <String>[];
     var label = 'وضع مخصص';

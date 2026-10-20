@@ -63,7 +63,7 @@ class DeviceDetailsScreen extends StatelessWidget {
   }
 }
 
-class _DeviceDetailsView extends StatelessWidget {
+class _DeviceDetailsView extends StatefulWidget {
   const _DeviceDetailsView({
     required this.userId,
     required this.device,
@@ -72,60 +72,81 @@ class _DeviceDetailsView extends StatelessWidget {
   final String userId;
   final PcDevice device;
 
+  @override
+  State<_DeviceDetailsView> createState() => _DeviceDetailsViewState();
+}
+
+class _DeviceDetailsViewState extends State<_DeviceDetailsView> {
+  String _selectedCategory = 'all';
+  String _searchQuery = '';
+  final TextEditingController _searchController = TextEditingController();
+
+  final List<Map<String, String>> _categories = [
+    {'id': 'all', 'label': '🌟 الكل', 'desc': 'كافة أدوات التحكم والمراقبة'},
+    {'id': 'controls', 'label': '⚡ التحكم والماوس', 'desc': 'لوحة اللمس، الصوت، الطاقة والشاشة'},
+    {'id': 'security', 'label': '🛡️ الأمان والأوضاع', 'desc': 'الأوضاع الذكية، الحظر وقفل المسارات'},
+    {'id': 'files', 'label': '📁 الملفات والبرامج', 'desc': 'الملفات، البرامج المفتوحة والحافظة'},
+    {'id': 'network', 'label': '📶 الشبكة والاتصال', 'desc': 'الواي فاي، البلوتوث وتيليجرام'},
+    {'id': 'logs', 'label': '📈 السجلات والتحليلات', 'desc': 'الأنشطة، التحليلات والإشعارات'},
+  ];
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
   Future<void> _sendCommand(
-    BuildContext context,
     CommandType type,
     String doneMessage, {
     Map<String, dynamic> payload = const {},
   }) async {
     await context.read<DeviceRepository>().sendCommand(
-          userId: userId,
-          deviceId: device.id,
+          userId: widget.userId,
+          deviceId: widget.device.id,
           type: type,
           payload: payload,
         );
-    if (context.mounted) showAppSnack(context, doneMessage);
+    if (mounted) showAppSnack(context, doneMessage);
   }
 
-  Future<void> _checkConnection(BuildContext context) async {
-    showAppSnack(context, 'جاري فحص الاتصال مع ${device.name}...');
+  Future<void> _checkConnection() async {
+    showAppSnack(context, 'جاري فحص الاتصال مع ${widget.device.name}...');
     final repo = context.read<DeviceRepository>();
     try {
       final commandId = await repo.sendCommand(
-        userId: userId,
-        deviceId: device.id,
+        userId: widget.userId,
+        deviceId: widget.device.id,
         type: CommandType.checkConnection,
       );
       final response = await repo.waitForCommandResponse(
-        deviceId: device.id,
+        deviceId: widget.device.id,
         commandId: commandId,
         timeout: const Duration(seconds: 8),
       );
-      if (!context.mounted) return;
+      if (!mounted) return;
       if (response != null && response.success) {
         showAppSnack(context, 'الكمبيوتر متصل ويعمل بنجاح (Online).');
       } else {
         showAppSnack(context, 'تم إرسال الفحص، والكمبيوتر قيد الاستجابة.');
       }
     } catch (e) {
-      if (context.mounted) showAppSnack(context, 'تعذر فحص الاتصال: $e', error: true);
+      if (mounted) showAppSnack(context, 'تعذر فحص الاتصال: $e', error: true);
     }
   }
 
-  Future<void> _sendMessageToComputer(BuildContext context) async {
+  Future<void> _sendMessageToComputer() async {
     final controller = TextEditingController();
     final message = await showDialog<String>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('رسالة للكمبيوتر'),
+        title: const Text('رسالة منبثقة لشاشة الكمبيوتر'),
         content: TextField(
           controller: controller,
           autofocus: true,
-          minLines: 3,
-          maxLines: 5,
           decoration: const InputDecoration(
-            labelText: 'اكتب الرسالة',
-            hintText: 'سيتم عرضها فوراً على شاشة الكمبيوتر',
+            labelText: 'نص الرسالة',
+            hintText: 'اكتب التنبيه أو الرسالة التي ستظهر للمستخدم...',
           ),
         ),
         actions: [
@@ -134,25 +155,23 @@ class _DeviceDetailsView extends StatelessWidget {
             child: const Text('إلغاء'),
           ),
           FilledButton.icon(
-            onPressed: () =>
-                Navigator.pop(dialogContext, controller.text.trim()),
+            onPressed: () => Navigator.pop(dialogContext, controller.text.trim()),
             icon: const Icon(Icons.send_rounded),
-            label: const Text('إرسال'),
+            label: const Text('إظهار على الشاشة'),
           ),
         ],
       ),
     );
     controller.dispose();
-    if (message == null || message.isEmpty || !context.mounted) return;
+    if (message == null || message.isEmpty || !mounted) return;
     await _sendCommand(
-      context,
-      CommandType.showMessage,
-      'تم إرسال الرسالة للكمبيوتر مباشرة.',
-      payload: {'message': message, 'title': 'KIOM Control'},
+      CommandType.windowsToast,
+      'تم إرسال الرسالة إلى شاشة الكمبيوتر.',
+      payload: {'title': 'تنبيه من تطبيق التحكم', 'message': message},
     );
   }
 
-  Future<void> _speakTextOnComputer(BuildContext context) async {
+  Future<void> _speakTextOnComputer() async {
     final controller = TextEditingController();
     final text = await showDialog<String>(
       context: context,
@@ -163,7 +182,7 @@ class _DeviceDetailsView extends StatelessWidget {
           autofocus: true,
           decoration: const InputDecoration(
             labelText: 'اكتب العبارة للنطق',
-            hintText: 'مثال: تم قفل الكمبيوتر أو مرحباً بك',
+            hintText: 'مثال: يرجى حفظ الملفات أو انتهت مهلة الاستخدام',
           ),
         ),
         actions: [
@@ -180,16 +199,15 @@ class _DeviceDetailsView extends StatelessWidget {
       ),
     );
     controller.dispose();
-    if (text == null || text.isEmpty || !context.mounted) return;
+    if (text == null || text.isEmpty || !mounted) return;
     await _sendCommand(
-      context,
       CommandType.textToSpeech,
       'تم إرسال أمر النطق الصوتي للكمبيوتر.',
       payload: {'text': text},
     );
   }
 
-  Future<void> _stopAgentOnComputer(BuildContext context) async {
+  Future<void> _stopAgentOnComputer() async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -209,24 +227,24 @@ class _DeviceDetailsView extends StatelessWidget {
       ),
     );
 
-    if (confirmed != true || !context.mounted) return;
+    if (confirmed != true || !mounted) return;
     await _sendCommand(
-      context,
       CommandType.checkConnection,
       'تم إرسال أمر إيقاف وإغلاق تطبيق الكمبيوتر بنجاح.',
       payload: {'action': 'exit_agent'},
     );
   }
 
-  void _open(BuildContext context, Widget screen) {
+  void _open(Widget screen) {
     Navigator.push(context, MaterialPageRoute(builder: (_) => screen));
   }
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final online = device.lastCheckResponse?.toLowerCase() == 'online' ||
-        device.isRecentlyOnline;
+    final device = widget.device;
+    final userId = widget.userId;
+    final online = device.lastCheckResponse?.toLowerCase() == 'online' || device.isRecentlyOnline;
 
     return Scaffold(
       extendBodyBehindAppBar: true,
@@ -235,13 +253,12 @@ class _DeviceDetailsView extends StatelessWidget {
         actions: [
           IconButton(
             tooltip: 'فحص الاتصال',
-            onPressed: () => _checkConnection(context),
+            onPressed: _checkConnection,
             icon: const Icon(Icons.bolt_rounded),
           ),
           IconButton(
             tooltip: 'إعداد Telegram',
             onPressed: () => _open(
-              context,
               TelegramSetupScreen(
                 userId: userId,
                 deviceId: device.id,
@@ -255,7 +272,7 @@ class _DeviceDetailsView extends StatelessWidget {
           ),
           IconButton(
             tooltip: 'الإعدادات العامة',
-            onPressed: () => _open(context, const SettingsScreen()),
+            onPressed: () => _open(const SettingsScreen()),
             icon: const Icon(Icons.tune_rounded),
           ),
           const SizedBox(width: 6),
@@ -276,326 +293,411 @@ class _DeviceDetailsView extends StatelessWidget {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 100, 16, 32),
           children: [
+            // 1. Device Hero Card
             _DeviceHero(device: device, online: online),
+
             const SizedBox(height: 14),
+
+            // 2. Trackpad & Mouse Hero Banner
             _TrackpadHeroCard(
               device: device,
-              onTap: () => _open(
-                context,
-                RemoteInputScreen(device: device),
-              ),
+              onTap: () => _open(RemoteInputScreen(device: device)),
             ),
+
             const SizedBox(height: 14),
-            _DirectModeBanner(deviceName: device.name),
+
+            // 3. Custom Smart Modes Hero Banner
+            _CustomModesHeroCard(
+              device: device,
+              onTap: () => _open(ModesScreen(userId: userId, device: device)),
+            ),
+
+            const SizedBox(height: 16),
+
+            // 4. Smart Search Bar with Clear Button
+            TextField(
+              controller: _searchController,
+              decoration: InputDecoration(
+                hintText: '🔍 ابحث عن أي أداة أو أمر أو إعداد...',
+                isDense: true,
+                filled: true,
+                fillColor: cs.surfaceContainerHighest.withValues(alpha: 0.5),
+                prefixIcon: const Icon(Icons.search_rounded),
+                suffixIcon: _searchQuery.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear_rounded),
+                        onPressed: () {
+                          setState(() {
+                            _searchQuery = '';
+                            _searchController.clear();
+                          });
+                        },
+                      )
+                    : null,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(18),
+                  borderSide: BorderSide.none,
+                ),
+              ),
+              onChanged: (val) => setState(() => _searchQuery = val.trim().toLowerCase()),
+            ),
+
             const SizedBox(height: 14),
-            _QuickActionsGrid(
-              actions: [
-                _QuickAction(
-                  title: 'ماوس وكيبورد',
-                  icon: Icons.mouse_rounded,
-                  color: const Color(0xFF10B981),
-                  onTap: () => _open(
-                    context,
-                    RemoteInputScreen(device: device),
-                  ),
-                ),
-                _QuickAction(
-                  title: 'لقطة شاشة',
-                  icon: Icons.screenshot_monitor_rounded,
-                  color: cs.primary,
-                  onTap: () => _sendCommand(
-                    context,
-                    CommandType.requestScreenshot,
-                    'تم إرسال طلب لقطة الشاشة مباشرة.',
-                  ),
-                ),
-                _QuickAction(
-                  title: 'طوارئ ⚡',
-                  icon: Icons.emergency_rounded,
-                  color: cs.error,
-                  onTap: () => _sendCommand(
-                    context,
-                    CommandType.emergencyMode,
-                    'تم تفعيل وضع الطوارئ مباشرة.',
-                  ),
-                ),
-                _QuickAction(
-                  title: 'قفل الشاشة',
-                  icon: Icons.lock_rounded,
-                  color: const Color(0xFFE11D48),
-                  onTap: () => _sendCommand(
-                    context,
-                    CommandType.lockScreen,
-                    'تم إرسال أمر قفل الشاشة فوراً.',
-                  ),
-                ),
-                _QuickAction(
-                  title: 'تراجع ↩️',
-                  icon: Icons.undo_rounded,
-                  color: const Color(0xFF7C3AED),
-                  onTap: () => _sendCommand(
-                    context,
-                    CommandType.undoLastCommand,
-                    'تم إرسال طلب التراجع عن آخر أمر.',
-                  ),
-                ),
-                _QuickAction(
-                  title: 'صحة الجهاز',
-                  icon: Icons.monitor_heart_rounded,
-                  color: const Color(0xFF06B6D4),
-                  onTap: () => _open(
-                    context,
-                    HealthScreen(userId: userId, device: device),
-                  ),
-                ),
-                _QuickAction(
-                  title: 'رسالة للشاشة',
-                  icon: Icons.chat_bubble_rounded,
-                  color: const Color(0xFF16A34A),
-                  onTap: () => _sendMessageToComputer(context),
-                ),
-                _QuickAction(
-                  title: 'نطق صوتي 🔊',
-                  icon: Icons.record_voice_over_rounded,
-                  color: const Color(0xFF8B5CF6),
-                  onTap: () => _speakTextOnComputer(context),
-                ),
-                _QuickAction(
-                  title: 'الأوضاع الذكية',
-                  icon: Icons.auto_awesome_rounded,
-                  color: const Color(0xFFF59E0B),
-                  onTap: () => _open(
-                    context,
-                    ModesScreen(userId: userId, device: device),
-                  ),
-                ),
-                _QuickAction(
-                  title: 'رمز الربط QR',
-                  icon: Icons.qr_code_2_rounded,
-                  color: cs.secondary,
-                  onTap: () => _sendCommand(
-                    context,
-                    CommandType.showPairingQr,
-                    'تم طلب إظهار رمز الربط على الكمبيوتر.',
-                  ),
-                ),
-                _QuickAction(
-                  title: 'الأذونات بالـ PC',
-                  icon: Icons.admin_panel_settings_rounded,
-                  color: cs.tertiary,
-                  onTap: () => _sendCommand(
-                    context,
-                    CommandType.showPermissionCenter,
-                    'تم طلب فتح شاشة الأذونات على الكمبيوتر.',
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 20),
-            _SectionTitle(
-              title: 'الاستخدام اليومي وإدارة الملفات',
-              subtitle: 'أكثر الأدوات المطلوبة للوصول السريع إلى الكمبيوتر.',
-            ),
-            ActionTile(
-              title: 'إدارة الملفات',
-              subtitle: 'تصفح، فتح، نسخ، نقل، إخفاء أو حذف الملفات من الهاتف',
-              icon: Icons.folder_open_rounded,
-              onTap: () => _open(
-                context,
-                FileManagerScreen(userId: userId, device: device),
+
+            // 5. Category Selector Tabs
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: _categories.map((cat) {
+                  final isSelected = _selectedCategory == cat['id'] && _searchQuery.isEmpty;
+                  return Padding(
+                    padding: const EdgeInsets.only(left: 8),
+                    child: ChoiceChip(
+                      label: Text(cat['label']!),
+                      selected: isSelected,
+                      onSelected: (_) {
+                        setState(() {
+                          _selectedCategory = cat['id']!;
+                          _searchQuery = '';
+                          _searchController.clear();
+                        });
+                      },
+                    ),
+                  );
+                }).toList(),
               ),
             ),
-            ActionTile(
-              title: 'التطبيقات المفتوحة',
-              subtitle: 'عرض وإغلاق البرامج والنوافذ الحالية بضغطة واحدة',
-              icon: Icons.apps_rounded,
-              onTap: () => _open(
-                context,
-                OpenAppsScreen(userId: userId, device: device),
-              ),
-            ),
-            ActionTile(
-              title: 'التطبيقات والمواقع الممنوعة',
-              subtitle: 'إدارة قوائم المنع والسماح المؤقت بدون تعقيد',
-              icon: Icons.block_rounded,
-              onTap: () => _open(
-                context,
-                BlockedItemsScreen(userId: userId, device: device),
-              ),
-            ),
-            ActionTile(
-              title: 'حماية المسارات',
-              subtitle: 'قواعد حماية للملفات والمجلدات الحساسة بكلمة مرور أو إذن',
-              icon: Icons.folder_copy_rounded,
-              onTap: () => _open(
-                context,
-                ProtectionScreen(userId: userId, device: device),
-              ),
-            ),
-            const SizedBox(height: 20),
-            _SectionTitle(
-              title: 'الاتصال والشبكة والتحكم',
-              subtitle: 'الشبكة، البلوتوث، الصوت، الطاقة والجدولة.',
-            ),
-            ActionTile(
-              title: 'جدولة الأوامر',
-              subtitle: 'نفّذ أوامر لاحقاً بتاريخ ووقت محددين تلقائياً',
-              icon: Icons.event_available_rounded,
-              onTap: () => _open(
-                context,
-                SchedulerScreen(userId: userId, device: device),
-              ),
-            ),
-            ActionTile(
-              title: 'WiFi والإنترنت',
-              subtitle: 'تشغيل/إيقاف WiFi أو تعطيل الإنترنت بالكامل',
-              icon: Icons.wifi_rounded,
-              onTap: () => _open(
-                context,
-                WifiScreen(userId: userId, device: device),
-              ),
-            ),
-            ActionTile(
-              title: 'Bluetooth',
-              subtitle: 'تشغيل/إيقاف البلوتوث وإرسال واستقبال الملفات',
-              icon: Icons.bluetooth_rounded,
-              onTap: () => _open(
-                context,
-                BluetoothScreen(userId: userId, device: device),
-              ),
-            ),
-            ActionTile(
-              title: 'الصوت',
-              subtitle: 'رفع، خفض، كتم أو تحديد نسبة الصوت الدقيقة',
-              icon: Icons.volume_up_rounded,
-              onTap: () => _open(
-                context,
-                VolumeScreen(userId: userId, device: device),
-              ),
-            ),
-            ActionTile(
-              title: 'الطاقة والقفل',
-              subtitle: 'إغلاق، إعادة تشغيل، قفل الشاشة، تسجيل الخروج أو القفل المؤقت',
-              icon: Icons.power_settings_new_rounded,
-              danger: true,
-              onTap: () => _open(
-                context,
-                PowerScreen(userId: userId, device: device),
-              ),
-            ),
-            ActionTile(
-              title: 'إيقاف تطبيق الكمبيوتر عن بُعد',
-              subtitle: 'إغلاق وإنهاء عملية تطبيق العميل الشغال على الكمبيوتر',
-              icon: Icons.stop_circle_rounded,
-              danger: true,
-              onTap: () => _stopAgentOnComputer(context),
-            ),
-            const SizedBox(height: 20),
-            _SectionTitle(
-              title: 'المراقبة والأمان والتكامل',
-              subtitle: 'ربط Telegram، السجلات، الإشعارات وطلبات التثبيت.',
-            ),
-            ActionTile(
-              title: 'ربط Telegram',
-              subtitle: device.isTelegramLinked
-                  ? 'مربوط حالياً (${device.telegramChatId}) • اضغط لتعديل الإعدادات'
-                  : 'افتح البوت واكتب Chat ID ليصل للكمبيوتر فوراً',
-              icon: Icons.send_rounded,
-              onTap: () => _open(
-                context,
-                TelegramSetupScreen(
-                  userId: userId,
-                  deviceId: device.id,
-                  device: device,
-                ),
-              ),
-            ),
-            ActionTile(
-              title: 'رسائل العمليات',
-              subtitle: 'سجل نجاح وفشل الأوامر والردود القادمة من الكمبيوتر',
-              icon: Icons.mark_chat_read_rounded,
-              onTap: () => _open(
-                context,
-                OperationMessagesScreen(userId: userId, device: device),
-              ),
-            ),
-            ActionTile(
-              title: 'مركز الإشعارات',
-              subtitle: 'تنبيهات فورية داخل التطبيق للأوامر والأحداث المهمة',
-              icon: Icons.notifications_active_rounded,
-              onTap: () => _open(
-                context,
-                NotificationsScreen(device: device),
-              ),
-            ),
-            ActionTile(
-              title: 'السجلات الذكية',
-              subtitle: 'ملخصات وتحليلات تلقائية للأحداث والأوامر والتطبيقات',
-              icon: Icons.insights_rounded,
-              onTap: () => _open(
-                context,
-                SmartInsightsScreen(userId: userId, device: device),
-              ),
-            ),
-            ActionTile(
-              title: 'لقطات الشاشة',
-              subtitle: 'طلب وعرض صور الشاشة المحفوظة من الكمبيوتر',
-              icon: Icons.photo_library_rounded,
-              onTap: () => _open(
-                context,
-                ScreenshotsScreen(userId: userId, device: device),
-              ),
-            ),
-            ActionTile(
-              title: 'سجل الحافظة الذكي',
-              subtitle: 'سجل كامل لعمليات النسخ (Ctrl+C) مع المسار والتطبيق المصدر',
-              icon: Icons.history_edu_rounded,
-              onTap: () => _open(
-                context,
-                ClipboardHistoryScreen(userId: userId, device: device),
-              ),
-            ),
-            ActionTile(
-              title: 'السجلات',
-              subtitle: 'طلب السجلات حسب الفترة الزمنية ونوع الحدث',
-              icon: Icons.receipt_long_rounded,
-              onTap: () => _open(
-                context,
-                LogsScreen(userId: userId, device: device),
-              ),
-            ),
-            ActionTile(
-              title: 'طلبات الإذن',
-              subtitle: 'موافقات فتح المسارات أو قواعد الحماية المعلقة',
-              icon: Icons.verified_user_rounded,
-              onTap: () => _open(
-                context,
-                PermissionRequestsScreen(userId: userId, device: device),
-              ),
-            ),
-            ActionTile(
-              title: 'منع التثبيت',
-              subtitle: 'طلبات ومراقبة تثبيت البرامج الجديدة على الكمبيوتر',
-              icon: Icons.install_desktop_rounded,
-              onTap: () => _open(
-                context,
-                InstallRequestsScreen(userId: userId, device: device),
-              ),
-            ),
-            ActionTile(
-              title: 'التطبيقات المثبتة',
-              subtitle: 'عرض البرامج المثبتة على الكمبيوتر وتواريخ تثبيتها',
-              icon: Icons.inventory_2_rounded,
-              onTap: () => _open(
-                context,
-                InstalledAppsScreen(userId: userId, device: device),
-              ),
-            ),
+
+            const SizedBox(height: 16),
+
+            // 6. Categorized Action Lists
+            ..._buildCategorizedSections(cs),
           ],
         ),
       ),
     );
   }
+
+  List<Widget> _buildCategorizedSections(ColorScheme cs) {
+    final list = <Widget>[];
+
+    // Helper method to check if an item matches search query or category
+    bool shouldShow(String category, String title, String subtitle) {
+      if (_searchQuery.isNotEmpty) {
+        return title.toLowerCase().contains(_searchQuery) || subtitle.toLowerCase().contains(_searchQuery);
+      }
+      return _selectedCategory == 'all' || _selectedCategory == category;
+    }
+
+    // SECTION 1: Controls & Input
+    final controlsItems = [
+      _ActionData(
+        title: 'لوحة اللمس ولوحة المفاتيح',
+        subtitle: 'تحكم فوري بالماوس، لوحة اللمس، الأزرار والكتابة بدون إنترنت عبر Wi-Fi',
+        icon: Icons.mouse_rounded,
+        onTap: () => _open(RemoteInputScreen(device: widget.device)),
+      ),
+      _ActionData(
+        title: 'التقاط صورة الشاشة (Screenshot)',
+        subtitle: 'تصوير شاشة الكمبيوتر فورياً وتحديث المعاينة في التطبيق',
+        icon: Icons.screenshot_monitor_rounded,
+        onTap: () => _sendCommand(CommandType.requestScreenshot, 'تم إرسال طلب لقطة الشاشة مباشرة.'),
+      ),
+      _ActionData(
+        title: 'فحص صحة ومواصفات الجهاز',
+        subtitle: 'عرض استهلاك المعالج، الذاكرة، الأقراص، والعتاد الفعلي',
+        icon: Icons.monitor_heart_rounded,
+        onTap: () => _open(HealthScreen(userId: widget.userId, device: widget.device)),
+      ),
+      _ActionData(
+        title: 'إرسال رسالة منبثقة للشاشة',
+        subtitle: 'عرض تنبيه أو إشعار Toast مباشرة على سطح مكتب الكمبيوتر',
+        icon: Icons.chat_bubble_rounded,
+        onTap: _sendMessageToComputer,
+      ),
+      _ActionData(
+        title: 'نطق صوتي عبر مكبرات الصوت',
+        subtitle: 'قراءة ونطق أي عبارة بالصوت عبر سماعات الكمبيوتر بوضوح',
+        icon: Icons.record_voice_over_rounded,
+        onTap: _speakTextOnComputer,
+      ),
+      _ActionData(
+        title: 'التحكم بمستوى الصوت',
+        subtitle: 'رفع، خفض، كتم، أو تحديد نسبة الصوت الدقيقة للكمبيوتر',
+        icon: Icons.volume_up_rounded,
+        onTap: () => _open(VolumeScreen(userId: widget.userId, device: widget.device)),
+      ),
+      _ActionData(
+        title: 'خيارات الطاقة والقفل',
+        subtitle: 'إغلاق، إعادة تشغيل، قفل الشاشة، أو وضع السكون المؤقت',
+        icon: Icons.power_settings_new_rounded,
+        danger: true,
+        onTap: () => _open(PowerScreen(userId: widget.userId, device: widget.device)),
+      ),
+      _ActionData(
+        title: 'إيقاف تطبيق الكمبيوتر عن بُعد',
+        subtitle: 'إغلاق وإنهاء عملية تطبيق العميل الشغال على الكمبيوتر فوراً',
+        icon: Icons.stop_circle_rounded,
+        danger: true,
+        onTap: _stopAgentOnComputer,
+      ),
+    ].where((e) => shouldShow('controls', e.title, e.subtitle)).toList();
+
+    if (controlsItems.isNotEmpty) {
+      list.add(const _SectionTitle(
+        title: '⚡ التحكم المباشر، الماوس والطاقة',
+        subtitle: 'أدوات الاستجابة الفورية، تحريك الماوس، الشاشة ومستوى الصوت.',
+      ));
+      for (final item in controlsItems) {
+        list.add(ActionTile(
+          title: item.title,
+          subtitle: item.subtitle,
+          icon: item.icon,
+          danger: item.danger,
+          onTap: item.onTap,
+        ));
+      }
+      list.add(const SizedBox(height: 16));
+    }
+
+    // SECTION 2: Security & Modes
+    final securityItems = [
+      _ActionData(
+        title: 'الأوضاع الذكية والمخصصة',
+        subtitle: 'إنشاء وتخصيص أوضاع ذكية (حظر ألعاب، تقييد صوت، دراسة، أطفال)',
+        icon: Icons.auto_awesome_rounded,
+        onTap: () => _open(ModesScreen(userId: widget.userId, device: widget.device)),
+      ),
+      _ActionData(
+        title: 'وضع الطوارئ الشامل ⚡',
+        subtitle: 'قفل الشاشة فوراً + لقطة شاشة + تنبيه عاجل مع قطع الاتصال',
+        icon: Icons.emergency_rounded,
+        danger: true,
+        onTap: () => _sendCommand(CommandType.emergencyMode, 'تم تفعيل وضع الطوارئ مباشرة.'),
+      ),
+      _ActionData(
+        title: 'التطبيقات والمواقع الممنوعة',
+        subtitle: 'إدارة قوائم حظر البرامج والمواقع ومنع الوصول بدون إذن',
+        icon: Icons.block_rounded,
+        onTap: () => _open(BlockedItemsScreen(userId: widget.userId, device: widget.device)),
+      ),
+      _ActionData(
+        title: 'حماية وقفل المسارات والملفات',
+        subtitle: 'قفل مجلدات وملفات حساسة بكلمة مرور أو باشتراط إذن الهاتف',
+        icon: Icons.folder_copy_rounded,
+        onTap: () => _open(ProtectionScreen(userId: widget.userId, device: widget.device)),
+      ),
+      _ActionData(
+        title: 'مراقبة ومنع تثبيت البرامج',
+        subtitle: 'مراقبة تثبيت البرامج الجديدة والموافقة عليها أو منعها',
+        icon: Icons.install_desktop_rounded,
+        onTap: () => _open(InstallRequestsScreen(userId: widget.userId, device: widget.device)),
+      ),
+      _ActionData(
+        title: 'طلبات الإذن والموافقات',
+        subtitle: 'موافقات فتح المسارات أو قواعد الحماية المعلقة من الكمبيوتر',
+        icon: Icons.verified_user_rounded,
+        onTap: () => _open(PermissionRequestsScreen(userId: widget.userId, device: widget.device)),
+      ),
+    ].where((e) => shouldShow('security', e.title, e.subtitle)).toList();
+
+    if (securityItems.isNotEmpty) {
+      list.add(const _SectionTitle(
+        title: '🛡️ الأمان، الأوضاع والحماية الذكية',
+        subtitle: 'إنشاء الأوضاع الذكية، حظر البرامج والمواقع وقفل الملفات الحساسة.',
+      ));
+      for (final item in securityItems) {
+        list.add(ActionTile(
+          title: item.title,
+          subtitle: item.subtitle,
+          icon: item.icon,
+          danger: item.danger,
+          onTap: item.onTap,
+        ));
+      }
+      list.add(const SizedBox(height: 16));
+    }
+
+    // SECTION 3: Files & Apps
+    final filesItems = [
+      _ActionData(
+        title: 'مدير الملفات الشامل',
+        subtitle: 'تصفح، فتح، تحميل، سحب أو حذف الملفات والمستندات من الهاتف',
+        icon: Icons.folder_open_rounded,
+        onTap: () => _open(FileManagerScreen(userId: widget.userId, device: widget.device)),
+      ),
+      _ActionData(
+        title: 'التطبيقات والنوافذ المفتوحة',
+        subtitle: 'عرض وإغلاق البرامج والنوافذ والتبويبات النشطة بضغطة واحدة',
+        icon: Icons.apps_rounded,
+        onTap: () => _open(OpenAppsScreen(userId: widget.userId, device: widget.device)),
+      ),
+      _ActionData(
+        title: 'البرامج المثبتة على الكمبيوتر',
+        subtitle: 'عرض كافة البرامج المثبتة وإصداراتها ومصادرها',
+        icon: Icons.inventory_2_rounded,
+        onTap: () => _open(InstalledAppsScreen(userId: widget.userId, device: widget.device)),
+      ),
+      _ActionData(
+        title: 'سجل الحافظة الذكي (Clipboard)',
+        subtitle: 'سجل كامل لعمليات النسخ (Ctrl+C) مع المسار والتطبيق المصدر',
+        icon: Icons.history_edu_rounded,
+        onTap: () => _open(ClipboardHistoryScreen(userId: widget.userId, device: widget.device)),
+      ),
+      _ActionData(
+        title: 'معرض لقطات الشاشة',
+        subtitle: 'استعراض وتحميل صور الشاشة الملتقطة سابقاً من الكمبيوتر',
+        icon: Icons.photo_library_rounded,
+        onTap: () => _open(ScreenshotsScreen(userId: widget.userId, device: widget.device)),
+      ),
+    ].where((e) => shouldShow('files', e.title, e.subtitle)).toList();
+
+    if (filesItems.isNotEmpty) {
+      list.add(const _SectionTitle(
+        title: '📁 إدارة الملفات، البرامج والحافظة',
+        subtitle: 'تصفح الملفات، مراقبة البرامج النشطة، وسجل الحافظة الذكي.',
+      ));
+      for (final item in filesItems) {
+        list.add(ActionTile(
+          title: item.title,
+          subtitle: item.subtitle,
+          icon: item.icon,
+          danger: item.danger,
+          onTap: item.onTap,
+        ));
+      }
+      list.add(const SizedBox(height: 16));
+    }
+
+    // SECTION 4: Network & Peripherals
+    final networkItems = [
+      _ActionData(
+        title: 'شبكة WiFi والإنترنت',
+        subtitle: 'تشغيل/إيقاف الواي فاي أو تعطيل الإنترنت ومحولات الشبكة',
+        icon: Icons.wifi_rounded,
+        onTap: () => _open(WifiScreen(userId: widget.userId, device: widget.device)),
+      ),
+      _ActionData(
+        title: 'البلوتوث (Bluetooth)',
+        subtitle: 'تشغيل/إيقاف البلوتوث وإرسال واستقبال الملفات اللاسلكية',
+        icon: Icons.bluetooth_rounded,
+        onTap: () => _open(BluetoothScreen(userId: widget.userId, device: widget.device)),
+      ),
+      _ActionData(
+        title: 'جدولة الأوامر والمهام',
+        subtitle: 'جدولة تنفيذ أوامر لاحقاً بتاريخ ووقت محددين بدقة',
+        icon: Icons.event_available_rounded,
+        onTap: () => _open(SchedulerScreen(userId: widget.userId, device: widget.device)),
+      ),
+      _ActionData(
+        title: 'إعدادات ربط Telegram',
+        subtitle: widget.device.isTelegramLinked
+            ? 'مربوط حالياً (${widget.device.telegramChatId}) • اضغط لتعديل الإعدادات'
+            : 'ربط البوت والمجموعة للتحكم عن بُعد بدون إنترنت محلي',
+        icon: Icons.send_rounded,
+        onTap: () => _open(TelegramSetupScreen(
+          userId: widget.userId,
+          deviceId: widget.device.id,
+          device: widget.device,
+        )),
+      ),
+    ].where((e) => shouldShow('network', e.title, e.subtitle)).toList();
+
+    if (networkItems.isNotEmpty) {
+      list.add(const _SectionTitle(
+        title: '📶 الشبكة، الاتصال والجدولة',
+        subtitle: 'الواي فاي، البلوتوث، جدولة الأوامر وتكامل تيليجرام.',
+      ));
+      for (final item in networkItems) {
+        list.add(ActionTile(
+          title: item.title,
+          subtitle: item.subtitle,
+          icon: item.icon,
+          danger: item.danger,
+          onTap: item.onTap,
+        ));
+      }
+      list.add(const SizedBox(height: 16));
+    }
+
+    // SECTION 5: Logs & Insights
+    final logsItems = [
+      _ActionData(
+        title: 'سجل الأنشطة والعمليات (Logs)',
+        subtitle: 'استعراض السجلات بحسب نوع الحدث أو الفترة الزمنية',
+        icon: Icons.receipt_long_rounded,
+        onTap: () => _open(LogsScreen(userId: widget.userId, device: widget.device)),
+      ),
+      _ActionData(
+        title: 'التحليلات الذكية والملخص',
+        subtitle: 'ملخصات وتحليلات ذكية لاستخدام الجهاز والبرامج والأمان',
+        icon: Icons.insights_rounded,
+        onTap: () => _open(SmartInsightsScreen(userId: widget.userId, device: widget.device)),
+      ),
+      _ActionData(
+        title: 'مركز الإشعارات والتنبيهات',
+        subtitle: 'تنبيهات فورية داخل التطبيق للأحداث والأوامر المنجزة',
+        icon: Icons.notifications_active_rounded,
+        onTap: () => _open(NotificationsScreen(device: widget.device)),
+      ),
+      _ActionData(
+        title: 'رسائل وردود العمليات',
+        subtitle: 'سجل نجاح وفشل الأوامر والردود المنفذة على الكمبيوتر',
+        icon: Icons.mark_chat_read_rounded,
+        onTap: () => _open(OperationMessagesScreen(userId: widget.userId, device: widget.device)),
+      ),
+    ].where((e) => shouldShow('logs', e.title, e.subtitle)).toList();
+
+    if (logsItems.isNotEmpty) {
+      list.add(const _SectionTitle(
+        title: '📈 السجلات، التحليلات والمراقبة',
+        subtitle: 'سجلات العمليات، التحليلات الذكية والتنبيهات الفورية.',
+      ));
+      for (final item in logsItems) {
+        list.add(ActionTile(
+          title: item.title,
+          subtitle: item.subtitle,
+          icon: item.icon,
+          danger: item.danger,
+          onTap: item.onTap,
+        ));
+      }
+      list.add(const SizedBox(height: 16));
+    }
+
+    if (list.isEmpty && _searchQuery.isNotEmpty) {
+      list.add(Padding(
+        padding: const EdgeInsets.symmetric(vertical: 40),
+        child: Column(
+          children: [
+            const Icon(Icons.search_off_rounded, size: 48, color: Colors.grey),
+            const SizedBox(height: 10),
+            Text('لا توجد أدوات مطابقة لـ "$_searchQuery"', style: const TextStyle(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 4),
+            const Text('جرب البحث بكلمة أخرى مثل: صوت، ماوس، حظر، ملف، قفل', style: TextStyle(color: Colors.grey, fontSize: 12)),
+          ],
+        ),
+      ));
+    }
+
+    return list;
+  }
+}
+
+class _ActionData {
+  _ActionData({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.onTap,
+    this.danger = false,
+  });
+
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final VoidCallback onTap;
+  final bool danger;
 }
 
 class _DeviceHero extends StatelessWidget {
@@ -705,18 +807,6 @@ class _DeviceHero extends StatelessWidget {
                   icon: Icons.auto_awesome_rounded,
                   color: Colors.white,
                 ),
-              if (device.isEmergency)
-                const StatusChip(
-                  label: 'طوارئ مفعّل',
-                  icon: Icons.emergency_rounded,
-                  color: Colors.white,
-                ),
-              if (device.isPrivacy)
-                const StatusChip(
-                  label: 'الخصوصية مفعّلة',
-                  icon: Icons.visibility_off_rounded,
-                  color: Colors.white,
-                ),
             ],
           ),
           if (device.lastSeenAt != null) ...[
@@ -727,118 +817,6 @@ class _DeviceHero extends StatelessWidget {
             ),
           ],
         ],
-      ),
-    );
-  }
-}
-
-class _DirectModeBanner extends StatelessWidget {
-  const _DirectModeBanner({required this.deviceName});
-
-  final String deviceName;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: cs.secondary.withValues(alpha: .10),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: cs.secondary.withValues(alpha: .18)),
-      ),
-      child: Row(
-        children: [
-          Icon(Icons.touch_app_rounded, color: cs.secondary),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              'وضع الضغط المباشر مفعّل: الأوامر تُرسل إلى $deviceName فوراً وبدون نافذة تأكيد.',
-              style: Theme.of(context)
-                  .textTheme
-                  .bodyMedium
-                  ?.copyWith(fontWeight: FontWeight.w800),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _QuickActionsGrid extends StatelessWidget {
-  const _QuickActionsGrid({required this.actions});
-
-  final List<_QuickAction> actions;
-
-  @override
-  Widget build(BuildContext context) {
-    return GridView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      itemCount: actions.length,
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 3,
-        crossAxisSpacing: 8,
-        mainAxisSpacing: 8,
-        childAspectRatio: 1.1,
-      ),
-      itemBuilder: (context, index) => actions[index],
-    );
-  }
-}
-
-class _QuickAction extends StatelessWidget {
-  const _QuickAction({
-    required this.title,
-    required this.icon,
-    required this.color,
-    required this.onTap,
-  });
-
-  final String title;
-  final IconData icon;
-  final Color color;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final surface = Theme.of(context).cardTheme.color ??
-        Theme.of(context).colorScheme.surface;
-    return Material(
-      color: surface,
-      borderRadius: BorderRadius.circular(20),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                width: 42,
-                height: 42,
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: .12),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Icon(icon, color: color, size: 24),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                title,
-                textAlign: TextAlign.center,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context)
-                    .textTheme
-                    .bodySmall
-                    ?.copyWith(fontWeight: FontWeight.w900),
-              ),
-            ],
-          ),
-        ),
       ),
     );
   }
@@ -863,19 +841,19 @@ class _TrackpadHeroCard extends StatelessWidget {
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(24),
-            gradient: LinearGradient(
+            gradient: const LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
               colors: [
-                const Color(0xFF065F46).withValues(alpha: 0.85),
-                const Color(0xFF047857).withValues(alpha: 0.95),
+                Color(0xFF065F46),
+                Color(0xFF047857),
               ],
             ),
-            boxShadow: [
+            boxShadow: const [
               BoxShadow(
-                color: const Color(0xFF059669).withValues(alpha: 0.25),
+                color: Color(0x40059669),
                 blurRadius: 16,
-                offset: const Offset(0, 6),
+                offset: Offset(0, 6),
               ),
             ],
           ),
@@ -951,6 +929,91 @@ class _TrackpadHeroCard extends StatelessWidget {
   }
 }
 
+class _CustomModesHeroCard extends StatelessWidget {
+  const _CustomModesHeroCard({required this.device, required this.onTap});
+
+  final PcDevice device;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(24),
+        child: Ink(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(24),
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                Color(0xFF4C1D95),
+                Color(0xFF6D28D9),
+              ],
+            ),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x407C3AED),
+                blurRadius: 16,
+                offset: Offset(0, 6),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 52,
+                height: 52,
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: const Icon(
+                  Icons.auto_awesome_rounded,
+                  color: Colors.white,
+                  size: 28,
+                ),
+              ),
+              const SizedBox(width: 14),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'الأوضاع الذكية والمخصصة',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    SizedBox(height: 4),
+                    Text(
+                      'إنشاء وتطبيق أوضاع مخصصة لحظر البرامج والمواقع وقفل الصوت بضغطة واحدة',
+                      style: TextStyle(
+                        color: Colors.white70,
+                        fontSize: 11.5,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(
+                Icons.arrow_forward_ios_rounded,
+                color: Colors.white70,
+                size: 16,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _SectionTitle extends StatelessWidget {
   const _SectionTitle({required this.title, required this.subtitle});
 
@@ -961,24 +1024,18 @@ class _SectionTitle extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(4, 4, 4, 8),
+      padding: const EdgeInsets.fromLTRB(4, 8, 4, 8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             title,
-            style: Theme.of(context)
-                .textTheme
-                .titleMedium
-                ?.copyWith(fontWeight: FontWeight.w900),
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
           ),
           const SizedBox(height: 3),
           Text(
             subtitle,
-            style: Theme.of(context)
-                .textTheme
-                .bodySmall
-                ?.copyWith(color: cs.onSurfaceVariant),
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant),
           ),
         ],
       ),
