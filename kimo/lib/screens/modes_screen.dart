@@ -97,15 +97,15 @@ class _ModesScreenState extends State<ModesScreen> {
       await repo.sendCommand(
         userId: widget.userId,
         deviceId: widget.device.id,
-        type: CommandType.setInternet,
-        payload: {'enabled': false},
+        type: CommandType.internetOffPermanent,
+        payload: {'permanent': true},
       );
     }
     if (mode.disableWifi) {
       await repo.sendCommand(
         userId: widget.userId,
         deviceId: widget.device.id,
-        type: CommandType.setWifi,
+        type: CommandType.wifiOff,
         payload: {'enabled': false},
       );
     }
@@ -113,22 +113,12 @@ class _ModesScreenState extends State<ModesScreen> {
       await repo.sendCommand(
         userId: widget.userId,
         deviceId: widget.device.id,
-        type: CommandType.setBluetooth,
+        type: CommandType.bluetoothOff,
         payload: {'enabled': false},
       );
     }
 
-    // 5. Send Installation block
-    if (mode.blockInstallations) {
-      await repo.sendCommand(
-        userId: widget.userId,
-        deviceId: widget.device.id,
-        type: CommandType.setInstallProtection,
-        payload: {'enabled': true},
-      );
-    }
-
-    // 6. Send Privacy Mode
+    // 5. Send Privacy Mode
     if (mode.enablePrivacyMode) {
       await repo.sendCommand(
         userId: widget.userId,
@@ -180,7 +170,7 @@ class _ModesScreenState extends State<ModesScreen> {
       await repo.sendCommand(
         userId: widget.userId,
         deviceId: widget.device.id,
-        type: CommandType.setInternet,
+        type: CommandType.internetOn,
         payload: {'enabled': true},
       );
     }
@@ -188,7 +178,7 @@ class _ModesScreenState extends State<ModesScreen> {
       await repo.sendCommand(
         userId: widget.userId,
         deviceId: widget.device.id,
-        type: CommandType.setWifi,
+        type: CommandType.wifiOn,
         payload: {'enabled': true},
       );
     }
