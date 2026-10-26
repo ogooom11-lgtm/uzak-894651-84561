@@ -369,7 +369,7 @@ Get-PnpDevice -Class Bluetooth |
     );
   }
 
-  Future<WindowsControlResult> openBluetoothReceive() async {
+  Future<WindowsControlResult> openBluetoothReceive({String? savePath}) async {
     final result = await _runPowerShell('Start-Process "fsquirt.exe" -ArgumentList "-r"');
     return WindowsControlResult(
       success: result.exitCode == 0,
@@ -1210,9 +1210,9 @@ Copy-Item -Path "$cleanPath" -Destination \$kiomCloudDir -Recurse -Force
       uploadFileToRemoteUrl(filePath, uploadUrl);
 
   Future<WindowsControlResult> copyToCloudSyncFolder(
-    String filePath,
-    String provider,
-  ) =>
+    String filePath, {
+    String provider = 'onedrive',
+  }) =>
       provider.toLowerCase().contains('one')
           ? syncFileToOneDrive(filePath)
           : syncFileToGoogleDrive(filePath);

@@ -163,10 +163,18 @@ class NativeInputService {
     );
   }
 
+  void moveMouseRelative(double dx, double dy, {double sensitivity = 1.0}) {
+    moveCursorRelative(dx * sensitivity, dy * sensitivity);
+  }
+
   /// Move cursor to absolute screen coordinates (0 to screen width/height)
   void moveCursorAbsolute(int x, int y) {
     if (!_initialized || _setCursorPos == null) return;
     _setCursorPos!(x, y);
+  }
+
+  void moveMouseAbsolute(int x, int y) {
+    moveCursorAbsolute(x, y);
   }
 
   /// Left mouse click (press and release)
@@ -209,10 +217,60 @@ class NativeInputService {
     _mouseEvent!(MOUSEEVENTF_LEFTUP, 0, 0, 0, 0);
   }
 
-  /// Scroll mouse wheel (positive for up, negative for down)
-  void scrollWheel(int amount) {
+  void rightDown() {
     if (!_initialized || _mouseEvent == null) return;
-    _mouseEvent!(MOUSEEVENTF_WHEEL, 0, 0, amount * 120, 0);
+    _mouseEvent!(MOUSEEVENTF_RIGHTDOWN, 0, 0, 0, 0);
+  }
+
+  void rightUp() {
+    if (!_initialized || _mouseEvent == null) return;
+    _mouseEvent!(MOUSEEVENTF_RIGHTUP, 0, 0, 0, 0);
+  }
+
+  void middleDown() {
+    if (!_initialized || _mouseEvent == null) return;
+    _mouseEvent!(MOUSEEVENTF_MIDDLEDOWN, 0, 0, 0, 0);
+  }
+
+  void middleUp() {
+    if (!_initialized || _mouseEvent == null) return;
+    _mouseEvent!(MOUSEEVENTF_MIDDLEUP, 0, 0, 0, 0);
+  }
+
+  void mouseDown([String button = 'left']) {
+    switch (button.toLowerCase()) {
+      case 'right':
+        rightDown();
+        break;
+      case 'middle':
+        middleDown();
+        break;
+      default:
+        leftDown();
+        break;
+    }
+  }
+
+  void mouseUp([String button = 'left']) {
+    switch (button.toLowerCase()) {
+      case 'right':
+        rightUp();
+        break;
+      case 'middle':
+        middleUp();
+        break;
+      default:
+        leftUp();
+        break;
+    }
+  }
+
+  /// Scroll mouse wheel (positive for up, negative for down)
+  void scrollWheel(int amount, {int dx = 0}) {
+    if (!_initialized || _mouseEvent == null) return;
+    if (amount != 0) {
+      _mouseEvent!(MOUSEEVENTF_WHEEL, 0, 0, amount * 120, 0);
+    }
   }
 
   /// Send key down event
@@ -231,6 +289,135 @@ class NativeInputService {
   void keyPress(int virtualKey) {
     keyDown(virtualKey);
     keyUp(virtualKey);
+  }
+
+  int _virtualKeyFromString(String key) {
+    final lower = key.toLowerCase().trim();
+    switch (lower) {
+      case 'backspace':
+      case 'back':
+        return VK_BACK;
+      case 'tab':
+        return VK_TAB;
+      case 'enter':
+      case 'return':
+        return VK_RETURN;
+      case 'shift':
+        return VK_SHIFT;
+      case 'ctrl':
+      case 'control':
+        return VK_CONTROL;
+      case 'alt':
+      case 'menu':
+        return VK_MENU;
+      case 'pause':
+        return VK_PAUSE;
+      case 'caps':
+      case 'capslock':
+        return VK_CAPITAL;
+      case 'esc':
+      case 'escape':
+        return VK_ESCAPE;
+      case 'space':
+      case ' ':
+        return VK_SPACE;
+      case 'pageup':
+        return VK_PRIOR;
+      case 'pagedown':
+        return VK_NEXT;
+      case 'end':
+        return VK_END;
+      case 'home':
+        return VK_HOME;
+      case 'left':
+        return VK_LEFT;
+      case 'up':
+        return VK_UP;
+      case 'right':
+        return VK_RIGHT;
+      case 'down':
+        return VK_DOWN;
+      case 'prtscn':
+      case 'snapshot':
+        return VK_SNAPSHOT;
+      case 'ins':
+      case 'insert':
+        return VK_INSERT;
+      case 'del':
+      case 'delete':
+        return VK_DELETE;
+      case 'win':
+      case 'windows':
+      case 'lwin':
+        return VK_LWIN;
+      case 'rwin':
+        return VK_RWIN;
+      case 'mute':
+        return VK_VOLUME_MUTE;
+      case 'voldown':
+        return VK_VOLUME_DOWN;
+      case 'volup':
+        return VK_VOLUME_UP;
+      case 'f1':
+        return VK_F1;
+      case 'f2':
+        return VK_F2;
+      case 'f3':
+        return VK_F3;
+      case 'f4':
+        return VK_F4;
+      case 'f5':
+        return VK_F5;
+      case 'f6':
+        return VK_F6;
+      case 'f7':
+        return VK_F7;
+      case 'f8':
+        return VK_F8;
+      case 'f9':
+        return VK_F9;
+      case 'f10':
+        return VK_F10;
+      case 'f11':
+        return VK_F11;
+      case 'f12':
+        return VK_F12;
+      default:
+        if (lower.length == 1) {
+          final code = lower.codeUnitAt(0);
+          if (code >= 97 && code <= 122) return code - 32;
+          if (code >= 48 && code <= 57) return code;
+        }
+        return 0;
+    }
+  }
+
+  void pressKey(dynamic key) {
+    if (key is int) {
+      keyPress(key);
+    } else if (key is String) {
+      final code = _virtualKeyFromString(key);
+      if (code != 0) {
+        keyPress(code);
+      } else {
+        typeText(key);
+      }
+    }
+  }
+
+  void pressKeyCombo(List<dynamic> keys) {
+    final codes = <int>[];
+    for (final k in keys) {
+      if (k is int) {
+        codes.add(k);
+      } else if (k is String) {
+        final c = _virtualKeyFromString(k);
+        if (c != 0) codes.add(c);
+      }
+    }
+    if (codes.isNotEmpty) {
+      keyCombination(codes);
+    }
   }
 
   /// Type text string by mapping characters to key strokes
@@ -343,7 +530,7 @@ class NativeInputService {
         keyPress(0x33);
         keyUp(VK_SHIFT);
         break;
-      case '$':
+      case r'$':
         keyDown(VK_SHIFT);
         keyPress(0x34);
         keyUp(VK_SHIFT);
