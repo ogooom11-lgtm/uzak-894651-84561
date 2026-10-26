@@ -2644,7 +2644,9 @@ class CommandExecutorService {
           await appBlocker.allowSite(site);
         }
         for (final app in prevApps) {
-          await appBlocker.allowApp(target: app);
+        for (final app in prevApps) {
+          await appBlocker.allowApp(app);
+        }
         }
       }
       await store.set('activePresetMode', null);

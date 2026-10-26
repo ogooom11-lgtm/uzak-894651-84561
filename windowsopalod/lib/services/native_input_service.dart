@@ -1,6 +1,8 @@
 import 'dart:ffi' as ffi;
 import 'dart:io';
 
+import 'package:ffi/ffi.dart' as pkg_ffi;
+
 // Win32 POINT Struct for GetCursorPos
 final class POINT extends ffi.Struct {
   @ffi.Int32()
@@ -10,12 +12,11 @@ final class POINT extends ffi.Struct {
   external int y;
 }
 
-// Native Win32 function signatures
-typedef _SetCursorPosC = ffi.Int32 Function(ffi.Int32 x, ffi.Int32 y);
-typedef _SetCursorPosDart = int Function(int x, int y);
-
 typedef _GetCursorPosC = ffi.Int32 Function(ffi.Pointer<POINT> lpPoint);
 typedef _GetCursorPosDart = int Function(ffi.Pointer<POINT> lpPoint);
+
+typedef _SetCursorPosC = ffi.Int32 Function(ffi.Int32 x, ffi.Int32 y);
+typedef _SetCursorPosDart = int Function(int x, int y);
 
 typedef _MouseEventC = ffi.Void Function(
   ffi.Uint32 dwFlags,
@@ -47,345 +48,356 @@ typedef _KeybdEventDart = void Function(
 
 class NativeInputService {
   NativeInputService._() {
-    _initNativeLibraries();
+    _init();
   }
 
   static final NativeInputService instance = NativeInputService._();
 
-  bool _initialized = false;
-  _SetCursorPosDart? _setCursorPos;
+  // Mouse event flags
+  static const int MOUSEEVENTF_MOVE = 0x0001;
+  static const int MOUSEEVENTF_LEFTDOWN = 0x0002;
+  static const int MOUSEEVENTF_LEFTUP = 0x0004;
+  static const int MOUSEEVENTF_RIGHTDOWN = 0x0008;
+  static const int MOUSEEVENTF_RIGHTUP = 0x0010;
+  static const int MOUSEEVENTF_MIDDLEDOWN = 0x0020;
+  static const int MOUSEEVENTF_MIDDLEUP = 0x0040;
+  static const int MOUSEEVENTF_WHEEL = 0x0800;
+  static const int MOUSEEVENTF_ABSOLUTE = 0x8000;
+
+  // Keyboard flags
+  static const int KEYEVENTF_EXTENDEDKEY = 0x0001;
+  static const int KEYEVENTF_KEYUP = 0x0002;
+
+  // Virtual key codes
+  static const int VK_BACK = 0x08;
+  static const int VK_TAB = 0x09;
+  static const int VK_RETURN = 0x0D;
+  static const int VK_SHIFT = 0x10;
+  static const int VK_CONTROL = 0x11;
+  static const int VK_MENU = 0x12; // Alt
+  static const int VK_PAUSE = 0x13;
+  static const int VK_CAPITAL = 0x14; // Caps Lock
+  static const int VK_ESCAPE = 0x1B;
+  static const int VK_SPACE = 0x20;
+  static const int VK_PRIOR = 0x21; // Page Up
+  static const int VK_NEXT = 0x22; // Page Down
+  static const int VK_END = 0x23;
+  static const int VK_HOME = 0x24;
+  static const int VK_LEFT = 0x25;
+  static const int VK_UP = 0x26;
+  static const int VK_RIGHT = 0x27;
+  static const int VK_DOWN = 0x28;
+  static const int VK_SNAPSHOT = 0x2C; // Print Screen
+  static const int VK_INSERT = 0x2D;
+  static const int VK_DELETE = 0x2E;
+  static const int VK_LWIN = 0x5B; // Windows key
+  static const int VK_RWIN = 0x5C;
+  static const int VK_VOLUME_MUTE = 0xAD;
+  static const int VK_VOLUME_DOWN = 0xAE;
+  static const int VK_VOLUME_UP = 0xAF;
+  static const int VK_MEDIA_NEXT_TRACK = 0xB0;
+  static const int VK_MEDIA_PREV_TRACK = 0xB1;
+  static const int VK_MEDIA_STOP = 0xB2;
+  static const int VK_MEDIA_PLAY_PAUSE = 0xB3;
+
+  // F1 to F12
+  static const int VK_F1 = 0x70;
+  static const int VK_F2 = 0x71;
+  static const int VK_F3 = 0x72;
+  static const int VK_F4 = 0x73;
+  static const int VK_F5 = 0x74;
+  static const int VK_F6 = 0x75;
+  static const int VK_F7 = 0x76;
+  static const int VK_F8 = 0x77;
+  static const int VK_F9 = 0x78;
+  static const int VK_F10 = 0x79;
+  static const int VK_F11 = 0x7A;
+  static const int VK_F12 = 0x7B;
+
   _GetCursorPosDart? _getCursorPos;
+  _SetCursorPosDart? _setCursorPos;
   _MouseEventDart? _mouseEvent;
   _KeybdEventDart? _keybdEvent;
 
   ffi.Pointer<POINT>? _pointPtr;
+  bool _initialized = false;
 
-  // Mouse Flags Constants
-  static const int mouseEventfMove = 0x0001;
-  static const int mouseEventfLeftDown = 0x0002;
-  static const int mouseEventfLeftUp = 0x0004;
-  static const int mouseEventfRightDown = 0x0008;
-  static const int mouseEventfRightUp = 0x0010;
-  static const int mouseEventfMiddleDown = 0x0020;
-  static const int mouseEventfMiddleUp = 0x0040;
-  static const int mouseEventfWheel = 0x0800;
-  static const int mouseEventfHWheel = 0x1000;
-  static const int mouseEventfAbsolute = 0x8000;
-
-  // Keyboard Flags Constants
-  static const int keyEventfExtendedKey = 0x0001;
-  static const int keyEventfKeyUp = 0x0002;
-  static const int keyEventfUnicode = 0x0004;
-  static const int keyEventfScancode = 0x0008;
-
-  // Virtual Key Map
-  static const Map<String, int> _vkMap = {
-    'backspace': 0x08,
-    'back': 0x08,
-    'tab': 0x09,
-    'enter': 0x0D,
-    'return': 0x0D,
-    'shift': 0x10,
-    'shift_left': 0xA0,
-    'shift_right': 0xA1,
-    'ctrl': 0x11,
-    'control': 0x11,
-    'ctrl_left': 0xA2,
-    'ctrl_right': 0xA3,
-    'alt': 0x12,
-    'menu': 0x12,
-    'alt_left': 0xA4,
-    'alt_right': 0xA5,
-    'pause': 0x13,
-    'caps_lock': 0x14,
-    'caps': 0x14,
-    'escape': 0x1B,
-    'esc': 0x1B,
-    'space': 0x20,
-    'page_up': 0x21,
-    'page_down': 0x22,
-    'end': 0x23,
-    'home': 0x24,
-    'left': 0x25,
-    'arrow_left': 0x25,
-    'up': 0x26,
-    'arrow_up': 0x26,
-    'right': 0x27,
-    'arrow_right': 0x27,
-    'down': 0x28,
-    'arrow_down': 0x28,
-    'print_screen': 0x2C,
-    'prtsc': 0x2C,
-    'insert': 0x2D,
-    'delete': 0x2E,
-    'del': 0x2E,
-    'win': 0x5B,
-    'windows': 0x5B,
-    'lwin': 0x5B,
-    'rwin': 0x5C,
-    'apps': 0x5D,
-    'num0': 0x60,
-    'num1': 0x61,
-    'num2': 0x62,
-    'num3': 0x63,
-    'num4': 0x64,
-    'num5': 0x65,
-    'num6': 0x66,
-    'num7': 0x67,
-    'num8': 0x68,
-    'num9': 0x69,
-    'f1': 0x70,
-    'f2': 0x71,
-    'f3': 0x72,
-    'f4': 0x73,
-    'f5': 0x74,
-    'f6': 0x75,
-    'f7': 0x76,
-    'f8': 0x77,
-    'f9': 0x78,
-    'f10': 0x79,
-    'f11': 0x7A,
-    'f12': 0x7B,
-    'num_lock': 0x90,
-    'scroll_lock': 0x91,
-    'volume_mute': 0xAD,
-    'vol_mute': 0xAD,
-    'mute': 0xAD,
-    'volume_down': 0xAE,
-    'vol_down': 0xAE,
-    'voldown': 0xAE,
-    'volume_up': 0xAF,
-    'vol_up': 0xAF,
-    'volup': 0xAF,
-    'media_next': 0xB0,
-    'media_prev': 0xB1,
-    'media_stop': 0xB2,
-    'media_play_pause': 0xB3,
-    'play_pause': 0xB3,
-  };
-
-  void _initNativeLibraries() {
+  void _init() {
     if (!Platform.isWindows) return;
     try {
       final user32 = ffi.DynamicLibrary.open('user32.dll');
-
-      _setCursorPos = user32
-          .lookupFunction<_SetCursorPosC, _SetCursorPosDart>('SetCursorPos');
       _getCursorPos = user32
           .lookupFunction<_GetCursorPosC, _GetCursorPosDart>('GetCursorPos');
+      _setCursorPos = user32
+          .lookupFunction<_SetCursorPosC, _SetCursorPosDart>('SetCursorPos');
       _mouseEvent = user32
           .lookupFunction<_MouseEventC, _MouseEventDart>('mouse_event');
       _keybdEvent = user32
           .lookupFunction<_KeybdEventC, _KeybdEventDart>('keybd_event');
 
-      _pointPtr = ffi.calloc<POINT>();
+      _pointPtr = pkg_ffi.calloc<POINT>();
       _initialized = true;
     } catch (e) {
       stderr.writeln('NativeInputService: Error loading user32.dll: $e');
     }
   }
 
-  /// Get current mouse cursor position
-  (int x, int y) getCursorPosition() {
+  /// Get current cursor coordinates
+  ({int x, int y}) getCursorPos() {
     if (!_initialized || _getCursorPos == null || _pointPtr == null) {
-      return (0, 0);
+      return (x: 0, y: 0);
     }
-    try {
-      _getCursorPos!(_pointPtr!);
-      return (_pointPtr!.ref.x, _pointPtr!.ref.y);
-    } catch (_) {
-      return (0, 0);
-    }
+    _getCursorPos!(_pointPtr!);
+    return (x: _pointPtr!.ref.x, y: _pointPtr!.ref.y);
   }
 
-  /// Move mouse cursor relatively with acceleration support
-  void moveMouseRelative(double dx, double dy, {double sensitivity = 1.0}) {
+  /// Move cursor relative to current position
+  void moveCursorRelative(double dx, double dy) {
+    if (!_initialized || _mouseEvent == null) return;
+    _mouseEvent!(
+      MOUSEEVENTF_MOVE,
+      dx.round(),
+      dy.round(),
+      0,
+      0,
+    );
+  }
+
+  /// Move cursor to absolute screen coordinates (0 to screen width/height)
+  void moveCursorAbsolute(int x, int y) {
     if (!_initialized || _setCursorPos == null) return;
-    try {
-      final current = getCursorPosition();
-
-      // Apply natural acceleration curve
-      final dist = (dx * dx + dy * dy);
-      double factor = sensitivity;
-      if (dist > 100) {
-        factor *= 1.35;
-      } else if (dist > 400) {
-        factor *= 1.7;
-      }
-
-      final moveX = (dx * factor).round();
-      final moveY = (dy * factor).round();
-
-      final newX = current.$1 + moveX;
-      final newY = current.$2 + moveY;
-
-      _setCursorPos!(newX, newY);
-    } catch (e) {
-      stderr.writeln('NativeInputService.moveMouseRelative error: $e');
-    }
+    _setCursorPos!(x, y);
   }
 
-  /// Move mouse cursor to absolute screen coordinates
-  void moveMouseAbsolute(int x, int y) {
-    if (!_initialized || _setCursorPos == null) return;
-    try {
-      _setCursorPos!(x, y);
-    } catch (_) {}
-  }
-
-  /// Perform mouse left click
+  /// Left mouse click (press and release)
   void leftClick() {
     if (!_initialized || _mouseEvent == null) return;
-    try {
-      _mouseEvent!(mouseEventfLeftDown, 0, 0, 0, 0);
-      _mouseEvent!(mouseEventfLeftUp, 0, 0, 0, 0);
-    } catch (_) {}
+    _mouseEvent!(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0);
+    _mouseEvent!(MOUSEEVENTF_LEFTUP, 0, 0, 0, 0);
   }
 
-  /// Perform mouse double click
+  /// Left mouse double click
   void doubleClick() {
-    if (!_initialized || _mouseEvent == null) return;
-    try {
-      _mouseEvent!(mouseEventfLeftDown, 0, 0, 0, 0);
-      _mouseEvent!(mouseEventfLeftUp, 0, 0, 0, 0);
-      sleep(const Duration(milliseconds: 50));
-      _mouseEvent!(mouseEventfLeftDown, 0, 0, 0, 0);
-      _mouseEvent!(mouseEventfLeftUp, 0, 0, 0, 0);
-    } catch (_) {}
+    leftClick();
+    sleep(const Duration(milliseconds: 50));
+    leftClick();
   }
 
-  /// Perform mouse right click
+  /// Right mouse click
   void rightClick() {
     if (!_initialized || _mouseEvent == null) return;
-    try {
-      _mouseEvent!(mouseEventfRightDown, 0, 0, 0, 0);
-      _mouseEvent!(mouseEventfRightUp, 0, 0, 0, 0);
-    } catch (_) {}
+    _mouseEvent!(MOUSEEVENTF_RIGHTDOWN, 0, 0, 0, 0);
+    _mouseEvent!(MOUSEEVENTF_RIGHTUP, 0, 0, 0, 0);
   }
 
-  /// Perform mouse middle click
+  /// Middle mouse click
   void middleClick() {
     if (!_initialized || _mouseEvent == null) return;
-    try {
-      _mouseEvent!(mouseEventfMiddleDown, 0, 0, 0, 0);
-      _mouseEvent!(mouseEventfMiddleUp, 0, 0, 0, 0);
-    } catch (_) {}
+    _mouseEvent!(MOUSEEVENTF_MIDDLEDOWN, 0, 0, 0, 0);
+    _mouseEvent!(MOUSEEVENTF_MIDDLEUP, 0, 0, 0, 0);
   }
 
-  /// Press mouse button down (for dragging)
-  void mouseDown(String button) {
+  /// Mouse left button down (for drag start)
+  void leftDown() {
     if (!_initialized || _mouseEvent == null) return;
-    try {
-      switch (button.toLowerCase()) {
-        case 'right':
-          _mouseEvent!(mouseEventfRightDown, 0, 0, 0, 0);
-          break;
-        case 'middle':
-          _mouseEvent!(mouseEventfMiddleDown, 0, 0, 0, 0);
-          break;
-        case 'left':
-        default:
-          _mouseEvent!(mouseEventfLeftDown, 0, 0, 0, 0);
-          break;
-      }
-    } catch (_) {}
+    _mouseEvent!(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0);
   }
 
-  /// Release mouse button up
-  void mouseUp(String button) {
+  /// Mouse left button up (for drag release)
+  void leftUp() {
     if (!_initialized || _mouseEvent == null) return;
-    try {
-      switch (button.toLowerCase()) {
-        case 'right':
-          _mouseEvent!(mouseEventfRightUp, 0, 0, 0, 0);
-          break;
-        case 'middle':
-          _mouseEvent!(mouseEventfMiddleUp, 0, 0, 0, 0);
-          break;
-        case 'left':
-        default:
-          _mouseEvent!(mouseEventfLeftUp, 0, 0, 0, 0);
-          break;
-      }
-    } catch (_) {}
+    _mouseEvent!(MOUSEEVENTF_LEFTUP, 0, 0, 0, 0);
   }
 
-  /// Scroll mouse wheel (vertical or horizontal)
-  void scrollWheel(int dy, {int dx = 0}) {
+  /// Scroll mouse wheel (positive for up, negative for down)
+  void scrollWheel(int amount) {
     if (!_initialized || _mouseEvent == null) return;
-    try {
-      if (dy != 0) {
-        // Standard wheel notch is 120
-        final wheelAmount = dy * 120;
-        _mouseEvent!(mouseEventfWheel, 0, 0, wheelAmount, 0);
-      }
-      if (dx != 0) {
-        final hWheelAmount = dx * 120;
-        _mouseEvent!(mouseEventfHWheel, 0, 0, hWheelAmount, 0);
-      }
-    } catch (_) {}
+    _mouseEvent!(MOUSEEVENTF_WHEEL, 0, 0, amount * 120, 0);
   }
 
-  /// Press a specific keyboard key
-  void pressKey(String key) {
+  /// Send key down event
+  void keyDown(int virtualKey) {
     if (!_initialized || _keybdEvent == null) return;
-    final lower = key.toLowerCase().trim();
-    int? vk = _vkMap[lower];
-
-    if (vk == null) {
-      if (lower.length == 1) {
-        final code = lower.toUpperCase().codeUnitAt(0);
-        if ((code >= 0x41 && code <= 0x5A) || (code >= 0x30 && code <= 0x39)) {
-          vk = code;
-        }
-      }
-    }
-
-    if (vk != null) {
-      _keybdEvent!(vk, 0, 0, 0);
-      _keybdEvent!(vk, 0, keyEventfKeyUp, 0);
-    } else {
-      // Type as unicode character
-      typeText(key);
-    }
+    _keybdEvent!(virtualKey, 0, 0, 0);
   }
 
-  /// Press keyboard shortcut combination (e.g. ['ctrl', 'c'], ['alt', 'tab'], ['win', 'd'])
-  void pressKeyCombo(List<String> keys) {
-    if (!_initialized || _keybdEvent == null || keys.isEmpty) return;
-    final vks = <int>[];
-    for (final k in keys) {
-      final lower = k.toLowerCase().trim();
-      int? vk = _vkMap[lower];
-      if (vk == null && lower.length == 1) {
-        final code = lower.toUpperCase().codeUnitAt(0);
-        if ((code >= 0x41 && code <= 0x5A) || (code >= 0x30 && code <= 0x39)) {
-          vk = code;
-        }
-      }
-      if (vk != null) vks.add(vk);
-    }
-
-    // Press all keys down
-    for (final vk in vks) {
-      _keybdEvent!(vk, 0, 0, 0);
-    }
-
-    sleep(const Duration(milliseconds: 30));
-
-    // Release all keys up in reverse order
-    for (final vk in vks.reversed) {
-      _keybdEvent!(vk, 0, keyEventfKeyUp, 0);
-    }
+  /// Send key up event
+  void keyUp(int virtualKey) {
+    if (!_initialized || _keybdEvent == null) return;
+    _keybdEvent!(virtualKey, 0, KEYEVENTF_KEYUP, 0);
   }
 
-  /// Type text into active window supporting any language (Arabic, English, Symbols, Emojis)
+  /// Send key press (press and release)
+  void keyPress(int virtualKey) {
+    keyDown(virtualKey);
+    keyUp(virtualKey);
+  }
+
+  /// Type text string by mapping characters to key strokes
   void typeText(String text) {
-    if (!_initialized || _keybdEvent == null || text.isEmpty) return;
-    for (final rune in text.runes) {
-      // Use KEYEVENTF_UNICODE
-      _keybdEvent!(0, rune, keyEventfUnicode, 0);
-      _keybdEvent!(0, rune, keyEventfUnicode | keyEventfKeyUp, 0);
+    for (int i = 0; i < text.length; i++) {
+      final char = text[i];
+      final code = char.codeUnitAt(0);
+
+      if (char == '\n') {
+        keyPress(VK_RETURN);
+      } else if (char == '\t') {
+        keyPress(VK_TAB);
+      } else if (char == ' ') {
+        keyPress(VK_SPACE);
+      } else if (code >= 65 && code <= 90) {
+        // Uppercase A-Z -> Shift + key
+        keyDown(VK_SHIFT);
+        keyPress(code);
+        keyUp(VK_SHIFT);
+      } else if (code >= 97 && code <= 122) {
+        // Lowercase a-z -> virtual key is uppercase code
+        keyPress(code - 32);
+      } else if (code >= 48 && code <= 57) {
+        // Digits 0-9
+        keyPress(code);
+      } else {
+        // Special characters or Unicode via clipboard paste or virtual keys
+        _typeSpecialChar(char);
+      }
+    }
+  }
+
+  void _typeSpecialChar(String char) {
+    switch (char) {
+      case '.':
+        keyPress(0xBE);
+        break;
+      case ',':
+        keyPress(0xBC);
+        break;
+      case '-':
+        keyPress(0xBD);
+        break;
+      case '/':
+        keyPress(0xBF);
+        break;
+      case ';':
+        keyPress(0xBA);
+        break;
+      case '=':
+        keyPress(0xBB);
+        break;
+      case '[':
+        keyPress(0xDB);
+        break;
+      case ']':
+        keyPress(0xDD);
+        break;
+      case '\\':
+        keyPress(0xDC);
+        break;
+      case '\'':
+        keyPress(0xDE);
+        break;
+      case '`':
+        keyPress(0xC0);
+        break;
+      case ':':
+        keyDown(VK_SHIFT);
+        keyPress(0xBA);
+        keyUp(VK_SHIFT);
+        break;
+      case '+':
+        keyDown(VK_SHIFT);
+        keyPress(0xBB);
+        keyUp(VK_SHIFT);
+        break;
+      case '<':
+        keyDown(VK_SHIFT);
+        keyPress(0xBC);
+        keyUp(VK_SHIFT);
+        break;
+      case '_':
+        keyDown(VK_SHIFT);
+        keyPress(0xBD);
+        keyUp(VK_SHIFT);
+        break;
+      case '>':
+        keyDown(VK_SHIFT);
+        keyPress(0xBF);
+        keyUp(VK_SHIFT);
+        break;
+      case '?':
+        keyDown(VK_SHIFT);
+        keyPress(0xBF);
+        keyUp(VK_SHIFT);
+        break;
+      case '!':
+        keyDown(VK_SHIFT);
+        keyPress(0x31);
+        keyUp(VK_SHIFT);
+        break;
+      case '@':
+        keyDown(VK_SHIFT);
+        keyPress(0x32);
+        keyUp(VK_SHIFT);
+        break;
+      case '#':
+        keyDown(VK_SHIFT);
+        keyPress(0x33);
+        keyUp(VK_SHIFT);
+        break;
+      case '$':
+        keyDown(VK_SHIFT);
+        keyPress(0x34);
+        keyUp(VK_SHIFT);
+        break;
+      case '%':
+        keyDown(VK_SHIFT);
+        keyPress(0x35);
+        keyUp(VK_SHIFT);
+        break;
+      case '^':
+        keyDown(VK_SHIFT);
+        keyPress(0x36);
+        keyUp(VK_SHIFT);
+        break;
+      case '&':
+        keyDown(VK_SHIFT);
+        keyPress(0x37);
+        keyUp(VK_SHIFT);
+        break;
+      case '*':
+        keyDown(VK_SHIFT);
+        keyPress(0x38);
+        keyUp(VK_SHIFT);
+        break;
+      case '(':
+        keyDown(VK_SHIFT);
+        keyPress(0x39);
+        keyUp(VK_SHIFT);
+        break;
+      case ')':
+        keyDown(VK_SHIFT);
+        keyPress(0x30);
+        keyUp(VK_SHIFT);
+        break;
+      default:
+        // For Arabic and unicode characters, send key press if mapped or fallback
+        break;
+    }
+  }
+
+  /// Key combination (e.g. Ctrl+C, Alt+F4, Win+D, Ctrl+Shift+Esc)
+  void keyCombination(List<int> keys) {
+    for (final key in keys) {
+      keyDown(key);
+    }
+    for (final key in keys.reversed) {
+      keyUp(key);
+    }
+  }
+
+  void dispose() {
+    if (_pointPtr != null) {
+      pkg_ffi.calloc.free(_pointPtr!);
+      _pointPtr = null;
     }
   }
 }

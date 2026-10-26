@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -29,6 +30,7 @@ import '../services/startup_task_service.dart';
 import '../services/telegram_cloud_database_service.dart';
 import '../services/telegram_command_service.dart';
 import '../services/telegram_notifier_service.dart';
+import '../services/windows_control_service.dart';
 import '../utils/json_file_store.dart';
 
 class KiomPcAgentApp {
@@ -316,7 +318,9 @@ class KiomPcAgentApp {
     final ssid = (net['Ssid'] ?? net['ProfileName'] ?? '').trim();
     final publicIp = (net['PublicIp'] ?? '').trim();
     final localIp = (net['LocalIp'] ?? '').trim();
-    final location = [net['City'], net['Country']].where((s) => s != null && s.isNotEmpty).join(', ');
+    final location = [net['City']?.toString(), net['Country']?.toString()]
+        .where((s) => s != null && s.trim().isNotEmpty)
+        .join(', ');
 
     final buffer = StringBuffer();
     buffer.writeln('🟢 <b>الكمبيوتر متصل الآن بالإنترنت</b>\n');

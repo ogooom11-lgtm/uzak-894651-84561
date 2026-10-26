@@ -2748,15 +2748,6 @@ class TelegramCommandService {
 
       return buffer.toString().trim();
     }
-        for (final a in apps.take(6)) {
-          final name = (a['ProcessName'] ?? '').toString();
-          final title = (a['Title'] ?? '').toString();
-          buffer.writeln('  ▫️ <b>$name:</b> $title');
-        }
-      }
-
-      return buffer.toString().trim();
-    }
 
     // Process List
     if (type == 'list_processes' || type == 'top_processes') {

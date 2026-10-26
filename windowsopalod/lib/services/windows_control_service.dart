@@ -380,8 +380,12 @@ Get-PnpDevice -Class Bluetooth |
     );
   }
 
-  Future<WindowsControlResult> sendBluetoothFile(String filePath) async {
-    final cleanPath = filePath.trim();
+  Future<WindowsControlResult> sendBluetoothFile({
+    String? path,
+    String? filePath,
+    String? deviceName,
+  }) async {
+    final cleanPath = (path ?? filePath ?? '').trim();
     if (cleanPath.isEmpty) {
       return const WindowsControlResult(
         success: false,
@@ -1174,6 +1178,68 @@ Copy-Item -Path "$cleanPath" -Destination \$kiomCloudDir -Recurse -Force
     return WindowsControlResult(
       success: result.exitCode == 0,
       message: result.exitCode == 0 ? 'تمت مزامنة الملف فوراً إلى Google Drive السحابي' : 'تعذر المزامنة إلى Google Drive: ${_clean(result)}',
+      payload: _payload(result),
+    );
+  }
+
+  Future<WindowsControlResult> volumeUp() => stepVolumeUp();
+  Future<WindowsControlResult> volumeDown() => stepVolumeDown();
+
+  Future<WindowsControlResult> setVolume(dynamic level) {
+    double val = 0.5;
+    if (level is num) {
+      val = level > 1 ? level / 100.0 : level.toDouble();
+    } else if (level is String) {
+      final parsed = double.tryParse(level) ?? 50.0;
+      val = parsed > 1 ? parsed / 100.0 : parsed;
+    }
+    return setMasterVolume(val);
+  }
+
+  Future<WindowsControlResult> systemHealth() => getSystemSpecs();
+
+  Future<WindowsControlResult> cleanupSystemTempFiles() => cleanupTempFiles();
+
+  Future<WindowsControlResult> getRunningProcessesReport({int limit = 15}) =>
+      getRunningProcesses();
+
+  Future<WindowsControlResult> uploadFileToCloudUrl(
+    String filePath,
+    String uploadUrl,
+  ) =>
+      uploadFileToRemoteUrl(filePath, uploadUrl);
+
+  Future<WindowsControlResult> copyToCloudSyncFolder(
+    String filePath,
+    String provider,
+  ) =>
+      provider.toLowerCase().contains('one')
+          ? syncFileToOneDrive(filePath)
+          : syncFileToGoogleDrive(filePath);
+
+  Future<WindowsControlResult> uploadToFastCloud(String filePath) =>
+      syncFileToOneDrive(filePath);
+
+  Future<WindowsControlResult> power(String action) async {
+    final lower = action.toLowerCase();
+    String cmd;
+    if (lower.contains('shut') || lower == 's') {
+      cmd = 'shutdown /s /t 0';
+    } else if (lower.contains('restart') || lower == 'r') {
+      cmd = 'shutdown /r /t 0';
+    } else if (lower.contains('sleep')) {
+      cmd = r'rundll32.exe powrprof.dll,SetSuspendState 0,1,0';
+    } else if (lower.contains('lock')) {
+      cmd = 'rundll32.exe user32.dll,LockWorkStation';
+    } else {
+      cmd = 'shutdown /l';
+    }
+    final result = await _runPowerShell(cmd);
+    return WindowsControlResult(
+      success: result.exitCode == 0,
+      message: result.exitCode == 0
+          ? 'تم تنفيذ أمر الطاقة: $action'
+          : 'تعذر تنفيذ أمر الطاقة: ${_clean(result)}',
       payload: _payload(result),
     );
   }
