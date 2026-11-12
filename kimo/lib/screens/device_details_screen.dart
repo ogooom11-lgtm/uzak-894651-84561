@@ -236,6 +236,48 @@ class _DeviceDetailsViewState extends State<_DeviceDetailsView> {
     );
   }
 
+  Future<void> _toggleSelfDefenseProtection() async {
+    final choice = await showDialog<String>(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        title: const Text('🛡️ حماية ملفات التطبيق من الحذف'),
+        content: const Text(
+          'تضمن هذه الميزة منع حذف أو تعديل مجلدات وملفات البرنامج وقواعد البيانات حتى لو كان البرنامج مغلقاً ومسجل الخروج، عبر نظام حماية NTFS.\n\nهل تريد تفعيل الحماية المشددة الآن؟',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogCtx, 'unlock'),
+            child: const Text('إلغاء القفل مؤقتاً'),
+          ),
+          FilledButton.icon(
+            style: FilledButton.styleFrom(backgroundColor: Colors.green),
+            onPressed: () => Navigator.pop(dialogCtx, 'lock'),
+            icon: const Icon(Icons.lock_rounded),
+            label: const Text('تفعيل الحماية المشددة'),
+          ),
+        ],
+      ),
+    );
+    if (choice == null || !mounted) return;
+    if (choice == 'lock') {
+      await _sendCommand(
+        CommandType.powershellExec,
+        'تم إرسال أمر تفعيل حماية ملفات التطبيق المشددة.',
+        payload: {
+          'command': 'protect_app_files',
+        },
+      );
+    } else if (choice == 'unlock') {
+      await _sendCommand(
+        CommandType.powershellExec,
+        'تم إرسال أمر فك قفل ملفات التطبيق مؤقتاً.',
+        payload: {
+          'command': 'unprotect_app_files',
+        },
+      );
+    }
+  }
+
   void _open(Widget screen) {
     Navigator.push(context, MaterialPageRoute(builder: (_) => screen));
   }
@@ -513,6 +555,12 @@ class _DeviceDetailsViewState extends State<_DeviceDetailsView> {
         subtitle: 'موافقات فتح المسارات أو قواعد الحماية المعلقة من الكمبيوتر',
         icon: Icons.verified_user_rounded,
         onTap: () => _open(PermissionRequestsScreen(userId: widget.userId, device: widget.device)),
+      ),
+      _ActionData(
+        title: 'حماية ملفات التطبيق ضد الحذف (Self-Defense)',
+        subtitle: 'قفل صلاحيات NTFS لمنع حذف أو تعديل ملفات التطبيق حتى لو كان البرنامج مغلقاً',
+        icon: Icons.shield_rounded,
+        onTap: _toggleSelfDefenseProtection,
       ),
     ].where((e) => shouldShow('security', e.title, e.subtitle)).toList();
 

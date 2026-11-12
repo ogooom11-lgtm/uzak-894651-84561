@@ -476,10 +476,10 @@ class NativeInputService {
       case ']':
         keyPress(0xDD);
         break;
-      case '\\':
+      case r'\':
         keyPress(0xDC);
         break;
-      case '\'':
+      case "'":
         keyPress(0xDE);
         break;
       case '`':

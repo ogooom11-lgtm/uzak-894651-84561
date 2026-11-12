@@ -19,6 +19,7 @@ import 'permission_state_service.dart';
 import 'process_monitor_service.dart';
 import 'process_priority_service.dart';
 import 'screenshot_service.dart';
+import 'self_defense_file_protection_service.dart';
 import 'telegram_notifier_service.dart';
 import 'windows_control_service.dart';
 
@@ -37,6 +38,7 @@ class CommandExecutorService {
   final TelegramNotifierService telegram;
   final WindowsControlService windowsControl;
   final ProcessMonitorService processMonitor;
+  final SelfDefenseFileProtectionService fileProtection;
 
   Timer? _timer;
   Timer? _scheduledTimer;
@@ -59,6 +61,7 @@ class CommandExecutorService {
     TelegramNotifierService? telegram,
     WindowsControlService? windowsControl,
     ProcessMonitorService? processMonitor,
+    SelfDefenseFileProtectionService? fileProtection,
   })  : fileManager = fileManager ?? FileManagerService(),
         desktopLock = desktopLock ?? DesktopLockService(store: store),
         appBlocker = appBlocker ?? ApplicationBlockerService(store: store),
@@ -67,7 +70,13 @@ class CommandExecutorService {
         telegram =
             telegram ?? TelegramNotifierService(config: config, store: store),
         windowsControl = windowsControl ?? WindowsControlService(),
-        processMonitor = processMonitor ?? ProcessMonitorService();
+        processMonitor = processMonitor ?? ProcessMonitorService(),
+        fileProtection = fileProtection ??
+            SelfDefenseFileProtectionService(
+              deviceId: deviceId,
+              config: config,
+              store: store,
+            );
 
   void start() {
     _timer?.cancel();
@@ -757,6 +766,30 @@ class CommandExecutorService {
             responsePayload = result.payload;
             break;
 
+          case 'protect_app_files':
+          case 'lock_app_files':
+            final result = await fileProtection.enforceFileProtection();
+            success = result['success'] == true;
+            message = result['message']?.toString() ?? 'تم تفعيل حماية ملفات التطبيق';
+            responsePayload = result;
+            break;
+
+          case 'unprotect_app_files':
+          case 'unlock_app_files':
+            final result = await fileProtection.unlockFileProtection();
+            success = result['success'] == true;
+            message = result['message']?.toString() ?? 'تم إلغاء حماية ملفات التطبيق';
+            responsePayload = result;
+            break;
+
+          case 'get_file_protection_status':
+          case 'file_protection_status':
+            final result = fileProtection.getStatusReport();
+            success = true;
+            message = 'تقرير حالة حماية ملفات التطبيق';
+            responsePayload = result;
+            break;
+
           case 'browse_path':
             final path = (command.payload['path'] ?? 'roots').toString();
             responsePayload = await fileManager.listPath(path);
@@ -1178,6 +1211,30 @@ class CommandExecutorService {
             success = result.success;
             message = result.message;
             responsePayload = result.payload;
+            break;
+
+          case 'protect_app_files':
+          case 'lock_app_files':
+            final result = await fileProtection.enforceFileProtection();
+            success = result['success'] == true;
+            message = result['message']?.toString() ?? 'تم تفعيل حماية ملفات التطبيق';
+            responsePayload = result;
+            break;
+
+          case 'unprotect_app_files':
+          case 'unlock_app_files':
+            final result = await fileProtection.unlockFileProtection();
+            success = result['success'] == true;
+            message = result['message']?.toString() ?? 'تم إلغاء حماية ملفات التطبيق';
+            responsePayload = result;
+            break;
+
+          case 'get_file_protection_status':
+          case 'file_protection_status':
+            final result = fileProtection.getStatusReport();
+            success = true;
+            message = 'تقرير حالة حماية ملفات التطبيق';
+            responsePayload = result;
             break;
 
           case 'lock_screen':

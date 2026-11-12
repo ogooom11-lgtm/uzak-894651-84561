@@ -7,6 +7,7 @@ import '../core/app_formatters.dart';
 import '../core/command_type.dart';
 import '../models/pc_device.dart';
 import '../repositories/device_repository.dart';
+import '../services/lan_discovery_service.dart';
 import '../widgets/app_snack.dart';
 import '../widgets/confirm_dialog.dart';
 import '../widgets/empty_state.dart';
@@ -32,6 +33,12 @@ class _DevicesScreenState extends State<DevicesScreen> {
   final Map<String, String> _messages = {};
   final Set<String> _checkingIds = {};
   String _query = '';
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(LanDiscoveryService.instance.start());
+  }
 
   Future<void> _checkConnection(BuildContext context, PcDevice device) async {
     if (_checkingIds.contains(device.id)) return;
@@ -517,6 +524,33 @@ class _DeviceCard extends StatelessWidget {
                                 .textTheme
                                 .bodySmall
                                 ?.copyWith(color: cs.onSurfaceVariant),
+                          ),
+                          Builder(
+                            builder: (context) {
+                              final lanInfo =
+                                  LanDiscoveryService.instance.getDevice(device.id);
+                              if (lanInfo != null && lanInfo.isFresh) {
+                                return Padding(
+                                  padding: const EdgeInsets.only(top: 4),
+                                  child: Row(
+                                    children: [
+                                      const Icon(Icons.bolt,
+                                          size: 13, color: Colors.green),
+                                      const SizedBox(width: 3),
+                                      Text(
+                                        'شبكة محلية مباشرة ⚡ (${lanInfo.ip})',
+                                        style: const TextStyle(
+                                          color: Colors.green,
+                                          fontWeight: FontWeight.w800,
+                                          fontSize: 11,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              }
+                              return const SizedBox.shrink();
+                            },
                           ),
                         ],
                       ),

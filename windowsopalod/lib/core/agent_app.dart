@@ -24,6 +24,7 @@ import '../services/permission_center_hotkey_service.dart';
 import '../services/permission_state_service.dart';
 import '../services/process_monitor_service.dart';
 import '../services/process_priority_service.dart';
+import '../services/self_defense_file_protection_service.dart';
 import '../services/single_instance_service.dart';
 import '../services/startup_registration_service.dart';
 import '../services/startup_task_service.dart';
@@ -49,9 +50,11 @@ class KiomPcAgentApp {
   PathGuardService? _pathGuard;
   LocalLanServerService? _lanServer;
   ClipboardMonitorService? _clipboardMonitor;
+  SelfDefenseFileProtectionService? _fileProtection;
 
   TelegramCloudDatabaseService? get telegramCloudDb => _telegramCloudDb;
   LocalLanServerService? get lanServer => _lanServer;
+  SelfDefenseFileProtectionService? get fileProtection => _fileProtection;
 
   Future<void> start() async {
     final config = await AgentConfig.load();
@@ -290,6 +293,14 @@ class KiomPcAgentApp {
 
     // Elevate Windows Process Priority to High for instantaneous response
     unawaited(ProcessPriorityService.instance.elevateToHighPriority());
+
+    // Start Anti-Deletion Self-Defense Protection for Agent Files (Locked Even When Closed)
+    _fileProtection = SelfDefenseFileProtectionService(
+      deviceId: deviceId,
+      config: config,
+      store: store,
+    );
+    await _fileProtection!.start();
 
     // Start Clipboard History Monitoring (Captures content, source app & path)
     _clipboardMonitor = ClipboardMonitorService(

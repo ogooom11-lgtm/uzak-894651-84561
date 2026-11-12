@@ -12,6 +12,7 @@ class LanDeviceInfo {
     this.os = 'Windows',
     required this.lastSeenAt,
     this.pingMs,
+    this.state = const {},
   });
 
   final String deviceId;
@@ -22,9 +23,10 @@ class LanDeviceInfo {
   final String os;
   final DateTime lastSeenAt;
   final int? pingMs;
+  final Map<String, dynamic> state;
 
   bool get isFresh =>
-      DateTime.now().difference(lastSeenAt).inSeconds <= 12;
+      DateTime.now().difference(lastSeenAt).inSeconds <= 15;
 
   LanDeviceInfo copyWith({
     String? deviceId,
@@ -35,6 +37,7 @@ class LanDeviceInfo {
     String? os,
     DateTime? lastSeenAt,
     int? pingMs,
+    Map<String, dynamic>? state,
   }) {
     return LanDeviceInfo(
       deviceId: deviceId ?? this.deviceId,
@@ -45,6 +48,7 @@ class LanDeviceInfo {
       os: os ?? this.os,
       lastSeenAt: lastSeenAt ?? this.lastSeenAt,
       pingMs: pingMs ?? this.pingMs,
+      state: state ?? this.state,
     );
   }
 }
@@ -56,8 +60,10 @@ class LanDiscoveryService {
 
   RawDatagramSocket? _udpSocket;
   Timer? _probeTimer;
+  Timer? _subnetScanTimer;
   Timer? _cleanupTimer;
   bool _running = false;
+  bool _isScanningSubnet = false;
 
   final Map<String, LanDeviceInfo> _discovered = {};
   final StreamController<Map<String, LanDeviceInfo>> _streamController =
@@ -74,10 +80,16 @@ class LanDiscoveryService {
 
     await _initUdpListener();
 
-    _probeTimer = Timer.periodic(const Duration(seconds: 4), (_) {
+    _probeTimer = Timer.periodic(const Duration(seconds: 3), (_) {
       sendDiscoveryProbe();
     });
     sendDiscoveryProbe();
+
+    // Fast subnet scan immediately upon startup and periodically every 25 seconds
+    _subnetScanTimer = Timer.periodic(const Duration(seconds: 25), (_) {
+      unawaited(scanLocalSubnet());
+    });
+    unawaited(scanLocalSubnet());
 
     _cleanupTimer = Timer.periodic(const Duration(seconds: 8), (_) {
       _pruneStaleDevices();
@@ -150,30 +162,99 @@ class LanDiscoveryService {
     } catch (_) {}
   }
 
-  /// Manually add or check a device IP (e.g. from manual IP input)
-  Future<LanDeviceInfo?> probeSpecificIp(String ip, {int port = 42424}) async {
-    final client = HttpClient()..connectionTimeout = const Duration(seconds: 2);
+  /// Concurrently scan the current local Wi-Fi /24 subnet (e.g. 192.168.1.1 - 254)
+  /// This guarantees immediate auto-discovery even when Wi-Fi router blocks UDP broadcast/multicast.
+  Future<List<LanDeviceInfo>> scanLocalSubnet() async {
+    if (_isScanningSubnet) return _discovered.values.toList();
+    _isScanningSubnet = true;
+
+    final found = <LanDeviceInfo>[];
+    try {
+      final subnets = await _getLocalSubnetPrefixes();
+      for (final prefix in subnets) {
+        // Probe in parallel batches of 25
+        const batchSize = 25;
+        for (int i = 1; i <= 254; i += batchSize) {
+          final tasks = <Future<LanDeviceInfo?>>[];
+          final end = (i + batchSize - 1).clamp(1, 254);
+          for (int ipSuffix = i; ipSuffix <= end; ipSuffix++) {
+            final targetIp = '$prefix$ipSuffix';
+            tasks.add(probeSpecificIp(targetIp, timeoutMs: 650));
+          }
+          final results = await Future.wait(tasks);
+          for (final dev in results) {
+            if (dev != null) found.add(dev);
+          }
+        }
+      }
+    } catch (_) {} finally {
+      _isScanningSubnet = false;
+    }
+    return found;
+  }
+
+  Future<List<String>> _getLocalSubnetPrefixes() async {
+    final prefixes = <String>{};
+    try {
+      final interfaces = await NetworkInterface.list(
+        includeLoopback: false,
+        type: InternetAddressType.IPv4,
+      );
+      for (final iface in interfaces) {
+        for (final addr in iface.addresses) {
+          if (!addr.isLoopback &&
+              !addr.address.startsWith('127.') &&
+              !addr.address.startsWith('169.254.')) {
+            final parts = addr.address.split('.');
+            if (parts.length == 4) {
+              prefixes.add('${parts[0]}.${parts[1]}.${parts[2]}.');
+            }
+          }
+        }
+      }
+    } catch (_) {}
+
+    // Fallback to common subnets if network interface enumeration is restricted
+    if (prefixes.isEmpty) {
+      prefixes.addAll(['192.168.1.', '192.168.0.', '192.168.2.']);
+    }
+    return prefixes.toList();
+  }
+
+  /// Manually probe or check a device IP (e.g. from subnet scan or manual input)
+  Future<LanDeviceInfo?> probeSpecificIp(
+    String ip, {
+    int port = 42424,
+    int timeoutMs = 1200,
+  }) async {
+    final client = HttpClient()..connectionTimeout = Duration(milliseconds: timeoutMs);
+    final sw = Stopwatch()..start();
     try {
       final req = await client.getUrl(Uri.parse('http://$ip:$port/api/ping'));
-      final resp = await req.close().timeout(const Duration(seconds: 2));
-      final bodyStr = await utf8.decodeStream(resp);
-      final json = (jsonDecode(bodyStr) as Map).cast<String, dynamic>();
+      final resp = await req.close().timeout(Duration(milliseconds: timeoutMs));
+      sw.stop();
 
-      final deviceId = (json['deviceId'] ?? '').toString();
-      final deviceName = (json['deviceName'] ?? 'Windows PC').toString();
+      if (resp.statusCode == 200) {
+        final bodyStr = await utf8.decodeStream(resp);
+        final json = (jsonDecode(bodyStr) as Map).cast<String, dynamic>();
 
-      if (deviceId.isNotEmpty) {
-        final info = LanDeviceInfo(
-          deviceId: deviceId,
-          deviceName: deviceName,
-          ip: ip,
-          httpPort: port,
-          os: (json['os'] ?? 'Windows').toString(),
-          lastSeenAt: DateTime.now(),
-        );
-        _discovered[deviceId] = info;
-        _streamController.add(Map.unmodifiable(_discovered));
-        return info;
+        final deviceId = (json['deviceId'] ?? '').toString();
+        final deviceName = (json['deviceName'] ?? 'Windows PC').toString();
+
+        if (deviceId.isNotEmpty) {
+          final info = LanDeviceInfo(
+            deviceId: deviceId,
+            deviceName: deviceName,
+            ip: ip,
+            httpPort: port,
+            os: (json['os'] ?? 'Windows').toString(),
+            lastSeenAt: DateTime.now(),
+            pingMs: sw.elapsedMilliseconds,
+          );
+          _discovered[deviceId] = info;
+          _streamController.add(Map.unmodifiable(_discovered));
+          return info;
+        }
       }
     } catch (_) {} finally {
       client.close();
@@ -185,7 +266,7 @@ class LanDiscoveryService {
     final now = DateTime.now();
     var changed = false;
     _discovered.removeWhere((key, val) {
-      final isStale = now.difference(val.lastSeenAt).inSeconds > 25;
+      final isStale = now.difference(val.lastSeenAt).inSeconds > 30;
       if (isStale) changed = true;
       return isStale;
     });
@@ -197,6 +278,7 @@ class LanDiscoveryService {
   void stop() {
     _running = false;
     _probeTimer?.cancel();
+    _subnetScanTimer?.cancel();
     _cleanupTimer?.cancel();
     _udpSocket?.close();
     _udpSocket = null;
